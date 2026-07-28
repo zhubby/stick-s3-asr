@@ -78,14 +78,18 @@ void test_orientation_controller_defaults_landscape_and_rotates_with_tilt() {
   TEST_ASSERT_FALSE(orientation.update(false, 0.0f, 1.0f, 100));
   TEST_ASSERT_EQUAL_UINT8(1, orientation.rotation());
 
-  TEST_ASSERT_TRUE(orientation.update(true, 0.0f, 1.0f, 100));
+  TEST_ASSERT_FALSE(orientation.update(true, 0.0f, 1.0f, 100));
+  TEST_ASSERT_EQUAL_UINT8(1, orientation.rotation());
+  TEST_ASSERT_TRUE(orientation.landscape());
+
+  TEST_ASSERT_TRUE(orientation.update(true, -1.0f, 0.0f, 200));
   TEST_ASSERT_EQUAL_UINT8(0, orientation.rotation());
   TEST_ASSERT_FALSE(orientation.landscape());
 
-  TEST_ASSERT_FALSE(orientation.update(true, -1.0f, 0.0f, 200));
+  TEST_ASSERT_FALSE(orientation.update(true, 0.0f, -1.0f, 300));
   TEST_ASSERT_EQUAL_UINT8(0, orientation.rotation());
 
-  TEST_ASSERT_TRUE(orientation.update(true, -1.0f, 0.0f, 900));
+  TEST_ASSERT_TRUE(orientation.update(true, 0.0f, -1.0f, 1000));
   TEST_ASSERT_EQUAL_UINT8(3, orientation.rotation());
   TEST_ASSERT_TRUE(orientation.landscape());
 }
@@ -287,7 +291,7 @@ void test_volc_truncated_payload_is_rejected_safely() {
 
 void test_page_model_empty_new_text_and_newlines() {
   PageModel pages(6, 2);
-  TEST_ASSERT_EQUAL_STRING("等待语音结果", pages.page().c_str());
+  TEST_ASSERT_EQUAL_STRING("Ready", pages.page().c_str());
   pages.setText("第一行\n第二行\n第三行");
   TEST_ASSERT_EQUAL_UINT32(2, pages.pageCount());
   TEST_ASSERT_EQUAL_STRING("第一行\n第二行", pages.page().c_str());

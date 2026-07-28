@@ -55,6 +55,7 @@ class DisplayUi {
   void drawResult(const UiState& state);
   void drawError(const UiState& state);
   void drawStatusPill(int x, int y, const char* label, uint16_t color);
+  void drawWifiIcon(int cx, int cy, uint16_t color);
   void drawPageText(const std::string& text, int x, int y, int lineHeight);
 
   AppMode lastMode_ = AppMode::Boot;

@@ -39,10 +39,10 @@ uint8_t OrientationController::chooseRotation(float accelX, float accelY) const 
   }
 
   if (absX > absY + kDominanceMargin) {
-    return accelX >= 0.0f ? 1 : 3;
+    return accelX >= 0.0f ? 2 : 0;
   }
   if (absY > absX + kDominanceMargin) {
-    return accelY >= 0.0f ? 0 : 2;
+    return accelY >= 0.0f ? 1 : 3;
   }
   return rotation_;
 }

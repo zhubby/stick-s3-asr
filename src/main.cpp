@@ -139,7 +139,7 @@ void startProvisioning(const std::string& message) {
 
   provisioningMessage = message;
   if (!provisioningPortal.begin(makeProvisioningSsid(), runtimeConfig.provisionApPassword)) {
-    setError("配网热点启动失败");
+    setError("AP failed");
     return;
   }
   mode = AppMode::Pairing;
@@ -163,7 +163,7 @@ void maintainWifi(uint32_t nowMs) {
     if (provisioningPortal.hasPendingCredentials()) {
       const WifiCredentials credentials = provisioningPortal.takePendingCredentials();
       if (!wifiCredentialStore.save(credentials)) {
-        setError("Wi-Fi 配置保存失败");
+        setError("Wi-Fi save failed");
         return;
       }
       applyWifiCredentials(credentials);
@@ -175,7 +175,7 @@ void maintainWifi(uint32_t nowMs) {
   }
 
   if (!wifiConfigured) {
-    startProvisioning("请连接热点完成 Wi-Fi 配网");
+    startProvisioning("AP setup");
     return;
   }
 
@@ -187,7 +187,7 @@ void maintainWifi(uint32_t nowMs) {
   }
 
   if (mode == AppMode::Recording || mode == AppMode::Recognizing) {
-    setError("Wi-Fi 已断开");
+    setError("Wi-Fi lost");
     return;
   }
 
@@ -198,21 +198,21 @@ void maintainWifi(uint32_t nowMs) {
 
   if (mode == AppMode::Connecting &&
       nowMs - wifiAttemptStartedMs > kWifiConnectTimeoutMs) {
-    startProvisioning("Wi-Fi 连接失败，请重新配网");
+    startProvisioning("Wi-Fi failed");
   }
 }
 
 void beginRecording(uint32_t nowMs) {
   if (!asrReady) {
-    setError("火山 ASR 密钥未配置，请填写后重新烧录");
+    setError("ASR key missing");
     return;
   }
   if (!wifiConfigured) {
-    startProvisioning("请先完成 Wi-Fi 配网");
+    startProvisioning("AP setup");
     return;
   }
   if (!wifiConnected()) {
-    setError("Wi-Fi 未连接，无法上传语音");
+    setError("Wi-Fi offline");
     startWifi(nowMs);
     return;
   }
@@ -223,7 +223,7 @@ void beginRecording(uint32_t nowMs) {
   waitingForAsrReady = false;
   asrClient.cancel();
   if (!asrClient.begin(makeAsrConfig(), makeRequestId())) {
-    setError(asrClient.result().error.empty() ? "ASR 启动失败" : asrClient.result().error);
+    setError(asrClient.result().error.empty() ? "ASR start failed" : asrClient.result().error);
     return;
   }
   waitingForAsrReady = true;
@@ -233,7 +233,7 @@ void beginRecording(uint32_t nowMs) {
 void stopRecording(uint32_t nowMs) {
   (void)nowMs;
   if (waitingForAsrReady) {
-    setError("ASR 准备中已松开，请按住到录音动画出现");
+    setError("Hold until REC");
     return;
   }
   if (mode == AppMode::Recording) {
@@ -253,7 +253,7 @@ void drainAudioToAsr() {
     const size_t read = recorder.readPcm(txBuffer.data(), target);
     if (read == 0) break;
     if (!asrClient.sendAudio(txBuffer.data(), read)) {
-      setError("音频发送失败");
+      setError("Audio send failed");
       return;
     }
   }
@@ -264,7 +264,7 @@ void finalizeAsrIfReady() {
   if (!asrClient.readyForAudio()) return;
   asrFinishRequested = true;
   if (!asrClient.finish()) {
-    setError(asrClient.result().error.empty() ? "ASR 结束失败" : asrClient.result().error);
+    setError(asrClient.result().error.empty() ? "ASR finish failed" : asrClient.result().error);
   }
 }
 
@@ -277,7 +277,7 @@ void updateSpeechFlow(uint32_t nowMs) {
   asrClient.loop(nowMs);
 
   if (asrClient.failed()) {
-    setError(asrClient.result().error.empty() ? "ASR 失败" : asrClient.result().error);
+    setError(asrClient.result().error.empty() ? "ASR failed" : asrClient.result().error);
     return;
   }
 
@@ -285,7 +285,7 @@ void updateSpeechFlow(uint32_t nowMs) {
     if (!asrClient.readyForAudio()) return;
     waitingForAsrReady = false;
     if (!recorder.start(nowMs)) {
-      setError("麦克风启动失败");
+      setError("Mic failed");
       return;
     }
     mode = AppMode::Recording;
@@ -294,7 +294,7 @@ void updateSpeechFlow(uint32_t nowMs) {
 
   recorder.update(nowMs);
   if (recorder.overflowed()) {
-    setError("网络发送太慢，语音缓冲已满");
+    setError("Network slow");
     return;
   }
 
@@ -311,7 +311,7 @@ void updateSpeechFlow(uint32_t nowMs) {
       return;
     }
     const std::string text =
-        asrClient.result().text.empty() ? "未识别到文字" : asrClient.result().text;
+        asrClient.result().text.empty() ? "No speech" : asrClient.result().text;
     pageModel.setText(text);
     mode = AppMode::Result;
     asrClient.cancel();
@@ -381,7 +381,7 @@ void setup() {
 
   const AudioFormat audioFormat;
   if (!recorder.begin(audioFormat, 100, 20, 20)) {
-    errorText = "麦克风初始化失败";
+    errorText = "Mic init failed";
     mode = AppMode::Error;
   } else {
     txBuffer.assign(recorder.chunkBytes(), 0);
@@ -391,7 +391,7 @@ void setup() {
   if (wifiConfigured) {
     startWifi(millis());
   } else {
-    startProvisioning("请连接热点完成 Wi-Fi 配网");
+    startProvisioning("AP setup");
   }
 }
 

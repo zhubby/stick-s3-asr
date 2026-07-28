@@ -109,19 +109,19 @@ void ProvisioningPortal::handleSave() {
 
   if (ssid.length() == 0 || ssid.length() > 32) {
     server_.send(400, "text/html; charset=utf-8",
-                 htmlPage("Wi-Fi 名称长度需要在 1-32 个字符之间"));
+                 htmlPage("SSID must be 1-32 chars"));
     return;
   }
   if (password.length() > 63) {
     server_.send(400, "text/html; charset=utf-8",
-                 htmlPage("Wi-Fi 密码不能超过 63 个字符"));
+                 htmlPage("Password max is 63 chars"));
     return;
   }
 
   pendingCredentials_.ssid = ssid.c_str();
   pendingCredentials_.password = password.c_str();
   server_.send(200, "text/html; charset=utf-8",
-               htmlPage("已保存，设备正在连接 Wi-Fi"));
+               htmlPage("Saved. Joining Wi-Fi"));
 }
 
 void ProvisioningPortal::handleNotFound() {
@@ -132,9 +132,9 @@ void ProvisioningPortal::handleNotFound() {
 String ProvisioningPortal::htmlPage(const String& message) const {
   String page;
   page.reserve(2800);
-  page += F("<!doctype html><html lang=\"zh-CN\"><head><meta charset=\"utf-8\">");
+  page += F("<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">");
   page += F("<meta name=\"viewport\" content=\"width=device-width,initial-scale=1\">");
-  page += F("<title>StickS3 ASR 配网</title><style>");
+  page += F("<title>StickS3 ASR Setup</title><style>");
   page += F(":root{color-scheme:dark}body{margin:0;background:#081112;color:#edf7f4;");
   page += F("font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}");
   page += F("main{max-width:420px;margin:0 auto;padding:28px 20px}");
@@ -148,20 +148,20 @@ String ProvisioningPortal::htmlPage(const String& message) const {
   page += F("font-size:16px;margin-top:10px}.msg{border:1px solid #56631c;");
   page += F("background:#272b13;color:#ffe68a;border-radius:8px;padding:10px 12px}");
   page += F(".meta{margin-top:22px;font-size:13px;color:#7e918d}</style></head><body>");
-  page += F("<main><h1>StickS3 ASR 配网</h1>");
-  page += F("<p>选择当前环境的 Wi-Fi，保存后设备会自动切回语音识别界面。</p>");
+  page += F("<main><h1>StickS3 ASR Setup</h1>");
+  page += F("<p>Enter Wi-Fi. The device will reconnect automatically.</p>");
   if (message.length() > 0) {
     page += F("<div class=\"msg\">");
     page += htmlEscape(message);
     page += F("</div>");
   }
   page += F("<form method=\"post\" action=\"/save\">");
-  page += F("<div class=\"field\"><label>Wi-Fi 名称</label>");
+  page += F("<div class=\"field\"><label>SSID</label>");
   page += F("<input name=\"ssid\" maxlength=\"32\" autocomplete=\"off\" required></div>");
-  page += F("<div class=\"field\"><label>Wi-Fi 密码</label>");
+  page += F("<div class=\"field\"><label>Password</label>");
   page += F("<input name=\"password\" type=\"password\" maxlength=\"63\"></div>");
-  page += F("<button type=\"submit\">保存并连接</button></form>");
-  page += F("<p class=\"meta\">配网地址：192.168.4.1</p>");
+  page += F("<button type=\"submit\">Save</button></form>");
+  page += F("<p class=\"meta\">Portal: 192.168.4.1</p>");
   page += F("</main></body></html>");
   return page;
 }

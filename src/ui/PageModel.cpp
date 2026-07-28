@@ -5,7 +5,7 @@
 namespace stick_s3_asr {
 
 namespace {
-const std::string kEmptyPage = "等待语音结果";
+const std::string kEmptyPage = "Ready";
 }
 
 PageModel::PageModel(size_t columns, size_t linesPerPage)

@@ -25,7 +25,7 @@ bool VolcAsrClient::begin(const VolcAsrConfig& config,
   finalSent_ = false;
 
   if (!parseEndpoint(config_.endpoint)) {
-    fail("ASR endpoint 格式无效");
+    fail("Bad ASR endpoint");
     return false;
   }
 
@@ -55,10 +55,10 @@ void VolcAsrClient::loop(uint32_t nowMs) {
   webSocket_.loop();
 
   if (state_ == State::Connecting && nowMs - lastActivityMs_ > kConnectTimeoutMs) {
-    fail("ASR 连接超时");
+    fail("ASR connect timeout");
   } else if (state_ == State::Recognizing &&
              nowMs - lastAudioMs_ > kFinalTimeoutMs) {
-    fail("ASR 识别超时");
+    fail("ASR timeout");
   }
 }
 
@@ -76,13 +76,13 @@ bool VolcAsrClient::finish() {
     return true;
   }
   if (!startSent_ || !webSocket_.isConnected()) {
-    fail("ASR 未连接，无法结束录音");
+    fail("ASR not ready");
     return false;
   }
   const auto frame = VolcAsrProtocol::makeAudioRequest(nullptr, 0, ++sequence_, true);
   finalSent_ = webSocket_.sendBIN(frame.data(), frame.size());
   if (!finalSent_) {
-    fail("ASR 结束帧发送失败");
+    fail("ASR final failed");
     return false;
   }
   state_ = State::Recognizing;
@@ -107,7 +107,7 @@ void VolcAsrClient::handleEvent(WStype_t type, uint8_t* payload, size_t length) 
     case WStype_DISCONNECTED:
       if (state_ != State::Completed && state_ != State::Disconnected &&
           state_ != State::Failed) {
-        fail("ASR 连接已断开");
+        fail("ASR disconnected");
       }
       break;
     case WStype_BIN:
@@ -117,7 +117,7 @@ void VolcAsrClient::handleEvent(WStype_t type, uint8_t* payload, size_t length) 
       handleTextResponse(payload, length);
       break;
     case WStype_ERROR:
-      fail("ASR WebSocket 错误");
+      fail("ASR socket error");
       break;
     default:
       break;
@@ -159,7 +159,7 @@ bool VolcAsrClient::sendStartFrame() {
       VolcAsrProtocol::makeFullClientRequest(config_, requestId_, sequence_);
   startSent_ = webSocket_.sendBIN(frame.data(), frame.size());
   if (!startSent_) {
-    fail("ASR 初始化帧发送失败");
+    fail("ASR init failed");
   }
   return startSent_;
 }

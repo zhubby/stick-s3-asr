@@ -161,20 +161,19 @@ void DisplayUi::drawHeader(const UiState& state) {
   g.setTextColor(kText, kPanel);
   g.drawString("STICK ASR", 12, 10);
 
-  const int wifiX = landscape() ? w - 70 : 91;
-  g.fillCircle(wifiX, 17, 4,
-               state.wifiConnected ? kGreen : (state.pairingActive ? kAmber : kMuted));
-  g.setTextColor(kMuted, kPanel);
-  g.drawString("WiFi", wifiX + 8, 10);
-
   const int battery = state.batteryLevel;
   const uint16_t batteryColor = battery < 0 ? kMuted : (battery < 20 ? kAmber : kGreen);
-  const int batteryX = landscape() ? w - 31 : 111;
-  g.drawRoundRect(batteryX, 20, 18, 7, 2, batteryColor);
-  g.fillRect(batteryX + 18, 22, 2, 3, batteryColor);
+  const int batteryX = w - 31;
+  const int batteryY = 13;
+  const int wifiX = batteryX - 16;
+  drawWifiIcon(wifiX, 17,
+               state.wifiConnected ? kGreen : (state.pairingActive ? kAmber : kMuted));
+
+  g.drawRoundRect(batteryX, batteryY, 18, 8, 2, batteryColor);
+  g.fillRect(batteryX + 18, batteryY + 2, 2, 4, batteryColor);
   if (battery >= 0) {
     const int fill = battery > 95 ? 14 : battery * 14 / 100;
-    g.fillRect(batteryX + 2, 22, fill, 3, batteryColor);
+    g.fillRect(batteryX + 2, batteryY + 2, fill, 4, batteryColor);
   }
 }
 
@@ -184,14 +183,12 @@ void DisplayUi::drawFooter(const UiState& state) {
   g.setFont(&fonts::efontCN_10);
   g.setTextColor(kMuted, kPanel2);
   if (state.mode == AppMode::Result) {
-    g.drawString("A 按住重录", 14, fY + (landscape() ? 3 : 7));
-    g.drawString("B 下一页", landscape() ? 158 : 79, fY + (landscape() ? 3 : 7));
+    g.drawString("A REC", 14, fY + (landscape() ? 3 : 7));
+    g.drawString("B PAGE", landscape() ? 158 : 79, fY + (landscape() ? 3 : 7));
   } else if (state.mode == AppMode::Pairing) {
-    g.drawString("手机连接热点", 14, fY + (landscape() ? 3 : 7));
-    g.drawString("填 WiFi", landscape() ? 158 : 88, fY + (landscape() ? 3 : 7));
+    g.drawString("AP SETUP", 14, fY + (landscape() ? 3 : 7));
   } else {
-    g.drawString("A 长按说话", 14, fY + (landscape() ? 3 : 7));
-    g.drawString("B 翻页", landscape() ? 158 : 84, fY + (landscape() ? 3 : 7));
+    g.drawString("A HOLD", 14, fY + (landscape() ? 3 : 7));
   }
 }
 
@@ -202,39 +199,37 @@ void DisplayUi::drawIdle(const UiState& state) {
     drawStatusPill(13, 43, ready ? "READY" : "SETUP", ready ? kCyan : kAmber);
     g.setFont(&fonts::efontCN_14);
     g.setTextColor(kText, kPanel);
-    g.drawString("语音速记", 75, 43);
+    g.drawString("ASR", 75, 43);
     g.setFont(&fonts::efontCN_12);
     g.setTextColor(kMuted, kPanel);
     const char* line =
-        !state.asrReady ? "请配置火山密钥"
-                        : (!state.wifiConfigured ? "正在开启配网" : "长按 A 说话，松开转写");
+        !state.asrReady ? "NO KEY"
+                        : (!state.wifiConfigured ? "AP SETUP" : "HOLD A");
     g.drawString(line, 18, 74);
     g.drawRoundRect(155, 42, 66, 20, 10, ready ? kCyan : kAmber);
     g.setTextColor(ready ? kCyan : kAmber, kPanel);
-    g.drawString(ready ? "云端ASR" : "待配置", 168, 46);
+    g.drawString(ready ? "CLOUD" : "SETUP", 168, 46);
     return;
   }
 
   drawStatusPill(17, 50, ready ? "READY" : "SETUP", ready ? kCyan : kAmber);
   g.setFont(&fonts::efontCN_16);
   g.setTextColor(kText, kPanel);
-  g.drawString("语音速记", 27, 78);
+  g.drawString("ASR", 50, 78);
   g.setFont(&fonts::efontCN_12);
   g.setTextColor(kMuted, kPanel);
   if (!state.asrReady) {
-    g.drawString("请配置火山密钥", 20, 111);
-    g.drawString("再重新烧录固件", 20, 132);
+    g.drawString("NO KEY", 43, 111);
   } else if (!state.wifiConfigured) {
-    g.drawString("正在开启配网", 26, 111);
-    g.drawString("请稍候", 50, 132);
+    g.drawString("AP SETUP", 34, 111);
   } else {
-    g.drawString("长按下方按钮", 25, 111);
-    g.drawString("松开后自动转写", 21, 132);
+    g.drawString("HOLD A", 40, 111);
+    g.drawString("RELEASE", 37, 132);
   }
 
   g.drawRoundRect(31, 165, 73, 20, 10, ready ? kCyan : kAmber);
   g.setTextColor(ready ? kCyan : kAmber, kPanel);
-  g.drawString(ready ? "云端 ASR" : "等待配置", 43, 169);
+  g.drawString(ready ? "CLOUD" : "SETUP", 48, 169);
 }
 
 void DisplayUi::drawPairing(const UiState& state) {
@@ -243,19 +238,19 @@ void DisplayUi::drawPairing(const UiState& state) {
     drawStatusPill(13, 40, "PAIR", kAmber);
     g.setFont(&fonts::efontCN_12);
     g.setTextColor(kText, kPanel);
-    g.drawString("手机连接热点后打开网页", 72, 42);
+    g.drawString("OPEN PORTAL", 72, 42);
     g.setFont(&fonts::Font2);
     g.setTextColor(kCyan, kPanel);
     g.drawString(state.pairingSsid.empty() ? "StickS3-ASR" : state.pairingSsid.c_str(),
                  18, 66);
     g.setFont(&fonts::efontCN_10);
     g.setTextColor(kMuted, kPanel);
-    g.drawString("密码", 18, 88);
+    g.drawString("PASS", 18, 88);
     g.setTextColor(kText, kPanel);
-    g.drawString(state.pairingPassword.empty() ? "无" : state.pairingPassword.c_str(),
+    g.drawString(state.pairingPassword.empty() ? "NONE" : state.pairingPassword.c_str(),
                  47, 88);
     g.setTextColor(kMuted, kPanel);
-    g.drawString("地址", 128, 88);
+    g.drawString("URL", 128, 88);
     g.setTextColor(kCyan, kPanel);
     g.drawString("192.168.4.1", 157, 88);
     return;
@@ -264,7 +259,7 @@ void DisplayUi::drawPairing(const UiState& state) {
   drawStatusPill(17, 50, "PAIR", kAmber);
   g.setFont(&fonts::efontCN_14);
   g.setTextColor(kText, kPanel);
-  g.drawString("手机连接热点", 21, 72);
+  g.drawString("OPEN AP", 36, 72);
 
   g.setFont(&fonts::Font2);
   g.setTextColor(kCyan, kPanel);
@@ -273,18 +268,18 @@ void DisplayUi::drawPairing(const UiState& state) {
 
   g.setFont(&fonts::efontCN_10);
   g.setTextColor(kMuted, kPanel);
-  g.drawString("密码", 17, 128);
+  g.drawString("PASS", 17, 128);
   g.setTextColor(kText, kPanel);
-  g.drawString(state.pairingPassword.empty() ? "无" : state.pairingPassword.c_str(),
+  g.drawString(state.pairingPassword.empty() ? "NONE" : state.pairingPassword.c_str(),
                46, 128);
 
   g.setTextColor(kMuted, kPanel);
-  g.drawString("浏览器打开", 17, 153);
+  g.drawString("URL", 17, 153);
   g.setTextColor(kCyan, kPanel);
   g.drawString(state.pairingUrl.empty() ? "192.168.4.1" : state.pairingUrl.c_str(),
                17, 174);
   g.setTextColor(kMuted, kPanel);
-  g.drawString("保存后自动连接", 26, 191);
+  g.drawString("SAVE TO JOIN", 28, 191);
 }
 
 void DisplayUi::drawConnecting(const UiState& state) {
@@ -293,20 +288,20 @@ void DisplayUi::drawConnecting(const UiState& state) {
     drawStatusPill(13, 43, "NET", kAmber);
     g.setFont(&fonts::efontCN_14);
     g.setTextColor(kText, kPanel);
-    g.drawString(state.wifiConnected ? "连接 ASR" : "连接 Wi-Fi", 76, 43);
+    g.drawString(state.wifiConnected ? "ASR" : "Wi-Fi", 76, 43);
     g.setTextColor(kMuted, kPanel);
     g.setFont(&fonts::efontCN_12);
-    g.drawString(state.wifiConnected ? "保持按住按钮" : "失败会自动进入配网热点", 18, 75);
+    g.drawString(state.wifiConnected ? "HOLD" : "AP IF FAIL", 18, 75);
     return;
   }
 
   drawStatusPill(17, 50, "NET", kAmber);
   g.setFont(&fonts::efontCN_14);
   g.setTextColor(kText, kPanel);
-  g.drawString(state.wifiConnected ? "正在连接 ASR" : "正在连接 Wi-Fi", 19, 87);
+  g.drawString(state.wifiConnected ? "ASR" : "Wi-Fi", 45, 87);
   g.setTextColor(kMuted, kPanel);
   g.setFont(&fonts::efontCN_12);
-  g.drawString(state.wifiConnected ? "请继续按住按钮" : "连接失败会开热点", 18, 122);
+  g.drawString(state.wifiConnected ? "HOLD" : "AP IF FAIL", 35, 122);
 }
 
 void DisplayUi::drawRecording(const UiState& state, uint32_t nowMs) {
@@ -315,7 +310,7 @@ void DisplayUi::drawRecording(const UiState& state, uint32_t nowMs) {
     drawStatusPill(13, 40, "REC", kRed);
     g.setFont(&fonts::efontCN_14);
     g.setTextColor(kText, kPanel);
-    g.drawString("正在聆听", 75, 41);
+    g.drawString("LISTEN", 75, 41);
 
     const int centerY = 82;
     const int peak = static_cast<int>(state.peak) * 26 / 32768;
@@ -335,14 +330,14 @@ void DisplayUi::drawRecording(const UiState& state, uint32_t nowMs) {
     g.drawString(seconds, 178, 61);
     g.setFont(&fonts::efontCN_10);
     g.setTextColor(kMuted, kPanel);
-    g.drawString("松开结束", 174, 92);
+    g.drawString("RELEASE", 174, 92);
     return;
   }
 
   drawStatusPill(17, 50, "REC", kRed);
   g.setFont(&fonts::efontCN_14);
   g.setTextColor(kText, kPanel);
-  g.drawString("正在聆听", 34, 72);
+  g.drawString("LISTEN", 38, 72);
 
   const int centerY = 128;
   const int peak = static_cast<int>(state.peak) * 36 / 32768;
@@ -361,7 +356,7 @@ void DisplayUi::drawRecording(const UiState& state, uint32_t nowMs) {
   g.drawString(seconds, 50, 160);
   g.setFont(&fonts::efontCN_10);
   g.setTextColor(kMuted, kPanel);
-  g.drawString("松开结束", 45, 187);
+  g.drawString("RELEASE", 43, 187);
 }
 
 void DisplayUi::drawRecognizing(uint32_t nowMs) {
@@ -370,28 +365,28 @@ void DisplayUi::drawRecognizing(uint32_t nowMs) {
     drawStatusPill(13, 43, "ASR", kAmber);
     g.setFont(&fonts::efontCN_14);
     g.setTextColor(kText, kPanel);
-    g.drawString("正在转文字", 76, 43);
+    g.drawString("ASR", 76, 43);
     for (int i = 0; i < 4; ++i) {
       const bool active = ((nowMs / 180) % 4) == static_cast<uint32_t>(i);
       g.fillCircle(82 + i * 18, 82, active ? 5 : 3, active ? kCyan : kLine);
     }
     g.setFont(&fonts::efontCN_10);
     g.setTextColor(kMuted, kPanel);
-    g.drawString("请稍候", 178, 78);
+    g.drawString("WAIT", 178, 78);
     return;
   }
 
   drawStatusPill(17, 50, "ASR", kAmber);
   g.setFont(&fonts::efontCN_14);
   g.setTextColor(kText, kPanel);
-  g.drawString("正在转文字", 26, 83);
+  g.drawString("ASR", 52, 83);
   for (int i = 0; i < 4; ++i) {
     const bool active = ((nowMs / 180) % 4) == static_cast<uint32_t>(i);
     g.fillCircle(47 + i * 14, 131, active ? 5 : 3, active ? kCyan : kLine);
   }
   g.setFont(&fonts::efontCN_10);
   g.setTextColor(kMuted, kPanel);
-  g.drawString("请稍候", 50, 170);
+  g.drawString("WAIT", 51, 170);
 }
 
 void DisplayUi::drawResult(const UiState& state) {
@@ -414,20 +409,20 @@ void DisplayUi::drawError(const UiState& state) {
     drawStatusPill(13, 40, "ERR", kAmber);
     g.setFont(&fonts::efontCN_14);
     g.setTextColor(kAmber, kPanel);
-    g.drawString("需要处理", 76, 42);
+    g.drawString("ERROR", 76, 42);
     g.setFont(&fonts::efontCN_10);
     g.setTextColor(kText, kPanel);
-    drawPageText(state.errorText.empty() ? "未知错误" : state.errorText, 18, 68, 15);
+    drawPageText(state.errorText.empty() ? "Error" : state.errorText, 18, 68, 15);
     return;
   }
 
   drawStatusPill(17, 50, "ERR", kAmber);
   g.setFont(&fonts::efontCN_14);
   g.setTextColor(kAmber, kPanel);
-  g.drawString("需要处理", 37, 75);
+  g.drawString("ERROR", 39, 75);
   g.setFont(&fonts::efontCN_10);
   g.setTextColor(kText, kPanel);
-  drawPageText(state.errorText.empty() ? "未知错误" : state.errorText, 17, 111, 17);
+  drawPageText(state.errorText.empty() ? "Error" : state.errorText, 17, 111, 17);
 }
 
 void DisplayUi::drawStatusPill(int x, int y, const char* label, uint16_t color) {
@@ -437,6 +432,24 @@ void DisplayUi::drawStatusPill(int x, int y, const char* label, uint16_t color) 
   g.setFont(&fonts::Font2);
   g.setTextColor(color, kPanel2);
   g.drawString(label, x + 9, y + 2);
+}
+
+void DisplayUi::drawWifiIcon(int cx, int cy, uint16_t color) {
+  auto& g = M5.Display;
+  g.fillRoundRect(cx - 12, cy - 8, 22, 17, 5, kPanel2);
+  g.drawRoundRect(cx - 12, cy - 8, 22, 17, 5, kLine);
+
+  g.drawLine(cx - 7, cy - 2, cx - 5, cy - 4, color);
+  g.drawFastHLine(cx - 4, cy - 5, 9, color);
+  g.drawLine(cx + 5, cy - 4, cx + 7, cy - 2, color);
+
+  g.drawLine(cx - 5, cy + 1, cx - 3, cy - 1, color);
+  g.drawFastHLine(cx - 2, cy - 2, 5, color);
+  g.drawLine(cx + 3, cy - 1, cx + 5, cy + 1, color);
+
+  g.drawLine(cx - 3, cy + 4, cx - 1, cy + 2, color);
+  g.drawLine(cx + 1, cy + 2, cx + 3, cy + 4, color);
+  g.fillCircle(cx, cy + 5, 2, color);
 }
 
 void DisplayUi::drawPageText(const std::string& text, int x, int y, int lineHeight) {
