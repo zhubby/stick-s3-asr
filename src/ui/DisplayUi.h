@@ -18,6 +18,7 @@ struct UiState {
   bool wifiConfigured = false;
   bool asrReady = false;
   bool pairingActive = false;
+  bool batteryCharging = false;
   int batteryLevel = -1;
   uint16_t peak = 0;
   uint32_t recordingMs = 0;
@@ -43,9 +44,12 @@ class DisplayUi {
   int panelH() const;
   int footerY() const;
   int textLineLimit() const;
+  LovyanGFX& gfx();
+  void recreateCanvas();
+  void flush();
 
-  void drawFrame(const UiState& state);
-  void drawHeader(const UiState& state);
+  void drawFrame(const UiState& state, uint32_t nowMs);
+  void drawHeader(const UiState& state, uint32_t nowMs);
   void drawFooter(const UiState& state);
   void drawIdle(const UiState& state);
   void drawPairing(const UiState& state);
@@ -55,9 +59,12 @@ class DisplayUi {
   void drawResult(const UiState& state);
   void drawError(const UiState& state);
   void drawStatusPill(int x, int y, const char* label, uint16_t color);
-  void drawWifiIcon(int cx, int cy, uint16_t color);
+  void drawBatteryIcon(int x, int y, int batteryLevel, bool charging, uint32_t nowMs);
+  void drawWifiIcon(int x, int y, uint16_t color);
   void drawPageText(const std::string& text, int x, int y, int lineHeight);
 
+  M5Canvas canvas_{&M5.Display};
+  bool canvasReady_ = false;
   AppMode lastMode_ = AppMode::Boot;
   uint32_t lastRenderMs_ = 0;
   std::string lastSignature_;

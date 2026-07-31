@@ -23,6 +23,7 @@ namespace {
 
 constexpr uint32_t kWifiConnectTimeoutMs = 15000;
 constexpr uint32_t kWifiRetryMs = 10000;
+constexpr uint32_t kOrientationSampleMs = 100;
 constexpr size_t kPortraitColumns = 16;
 constexpr size_t kPortraitLines = 6;
 constexpr size_t kLandscapeColumns = 34;
@@ -47,6 +48,7 @@ ProvisioningPortal provisioningPortal;
 std::vector<uint8_t> txBuffer;
 uint32_t wifiAttemptStartedMs = 0;
 uint32_t lastWifiRetryMs = 0;
+uint32_t lastOrientationSampleMs = 0;
 bool asrFinishRequested = false;
 bool waitingForAsrReady = false;
 
@@ -97,6 +99,10 @@ void applyPageLayout() {
 
 void updateDisplayOrientation(uint32_t nowMs) {
   if (!M5.Imu.isEnabled()) return;
+  if (lastOrientationSampleMs != 0 && nowMs - lastOrientationSampleMs < kOrientationSampleMs) {
+    return;
+  }
+  lastOrientationSampleMs = nowMs;
 
   M5.Imu.update();
   float accelX = 0.0f;
@@ -326,6 +332,7 @@ UiState buildUiState(uint32_t nowMs) {
   state.wifiConfigured = wifiConfigured;
   state.asrReady = asrReady;
   state.pairingActive = provisioningPortal.active();
+  state.batteryCharging = M5.Power.isCharging() == m5::Power_Class::is_charging;
   state.batteryLevel = M5.Power.getBatteryLevel();
   state.peak = recorder.lastPeak();
   state.recordingMs = recorder.recordedMs(nowMs);

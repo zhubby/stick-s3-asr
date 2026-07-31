@@ -82,14 +82,23 @@ void test_orientation_controller_defaults_landscape_and_rotates_with_tilt() {
   TEST_ASSERT_EQUAL_UINT8(1, orientation.rotation());
   TEST_ASSERT_TRUE(orientation.landscape());
 
-  TEST_ASSERT_TRUE(orientation.update(true, -1.0f, 0.0f, 200));
+  TEST_ASSERT_FALSE(orientation.update(true, -1.0f, 0.0f, 200));
+  TEST_ASSERT_EQUAL_UINT8(1, orientation.rotation());
+
+  TEST_ASSERT_FALSE(orientation.update(true, -1.0f, 0.0f, 650));
+  TEST_ASSERT_EQUAL_UINT8(1, orientation.rotation());
+
+  TEST_ASSERT_TRUE(orientation.update(true, -1.0f, 0.0f, 750));
   TEST_ASSERT_EQUAL_UINT8(0, orientation.rotation());
   TEST_ASSERT_FALSE(orientation.landscape());
 
-  TEST_ASSERT_FALSE(orientation.update(true, 0.0f, -1.0f, 300));
+  TEST_ASSERT_FALSE(orientation.update(true, 0.0f, -1.0f, 900));
   TEST_ASSERT_EQUAL_UINT8(0, orientation.rotation());
 
-  TEST_ASSERT_TRUE(orientation.update(true, 0.0f, -1.0f, 1000));
+  TEST_ASSERT_FALSE(orientation.update(true, 0.0f, -1.0f, 1500));
+  TEST_ASSERT_EQUAL_UINT8(0, orientation.rotation());
+
+  TEST_ASSERT_TRUE(orientation.update(true, 0.0f, -1.0f, 2100));
   TEST_ASSERT_EQUAL_UINT8(3, orientation.rotation());
   TEST_ASSERT_TRUE(orientation.landscape());
 }

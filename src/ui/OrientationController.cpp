@@ -8,10 +8,11 @@ namespace {
 constexpr float kTiltThreshold = 0.55f;
 constexpr float kDominanceMargin = 0.15f;
 constexpr uint32_t kRotationCooldownMs = 700;
+constexpr uint32_t kRotationSettleMs = 500;
 }
 
 OrientationController::OrientationController(uint8_t initialRotation)
-    : rotation_(initialRotation & 3U) {}
+    : rotation_(initialRotation & 3U), pendingRotation_(rotation_) {}
 
 bool OrientationController::update(bool imuAvailable,
                                    float accelX,
@@ -20,13 +21,30 @@ bool OrientationController::update(bool imuAvailable,
   if (!imuAvailable) return false;
 
   const uint8_t next = chooseRotation(accelX, accelY);
-  if (next == rotation_) return false;
+  if (next == rotation_) {
+    hasPendingRotation_ = false;
+    pendingRotation_ = rotation_;
+    return false;
+  }
+
   if (lastChangeMs_ != 0 && nowMs - lastChangeMs_ < kRotationCooldownMs) {
+    return false;
+  }
+
+  if (!hasPendingRotation_ || pendingRotation_ != next) {
+    pendingRotation_ = next;
+    pendingSinceMs_ = nowMs;
+    hasPendingRotation_ = true;
+    return false;
+  }
+
+  if (nowMs - pendingSinceMs_ < kRotationSettleMs) {
     return false;
   }
 
   rotation_ = next;
   lastChangeMs_ = nowMs;
+  hasPendingRotation_ = false;
   return true;
 }
 

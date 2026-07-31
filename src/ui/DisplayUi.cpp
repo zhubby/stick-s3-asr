@@ -17,36 +17,67 @@ constexpr uint16_t kAmber = 0xFDC0;
 constexpr uint16_t kRed = 0xF9E7;
 }
 
+LovyanGFX& DisplayUi::gfx() {
+  return canvasReady_ ? static_cast<LovyanGFX&>(canvas_)
+                      : static_cast<LovyanGFX&>(M5.Display);
+}
+
+void DisplayUi::recreateCanvas() {
+  canvasReady_ = false;
+  canvas_.deleteSprite();
+  canvas_.setPsram(true);
+  canvas_.setColorDepth(16);
+  canvasReady_ = canvas_.createSprite(M5.Display.width(), M5.Display.height()) != nullptr;
+  if (canvasReady_) {
+    canvas_.setTextDatum(top_left);
+  }
+}
+
+void DisplayUi::flush() {
+  if (!canvasReady_) return;
+  M5.Display.startWrite();
+  canvas_.pushSprite(0, 0);
+  M5.Display.endWrite();
+}
+
 void DisplayUi::begin(uint8_t initialRotation) {
   M5.Display.setRotation(initialRotation & 3U);
   M5.Display.setBrightness(160);
-  M5.Display.fillScreen(kBg);
-  M5.Display.setTextDatum(top_left);
-  M5.Display.setTextColor(kText, kBg);
-  M5.Display.setFont(&fonts::efontCN_12);
-  M5.Display.drawString("StickS3 ASR", 18, M5.Display.height() / 2 - 16);
-  M5.Display.drawString("Booting...", 28, M5.Display.height() / 2 + 6);
+  recreateCanvas();
+  auto& g = gfx();
+  g.fillScreen(kBg);
+  g.setTextDatum(top_left);
+  g.setTextColor(kText, kBg);
+  g.setFont(&fonts::efontCN_12);
+  g.drawString("StickS3 ASR", 18, g.height() / 2 - 16);
+  g.drawString("Booting...", 28, g.height() / 2 + 6);
+  flush();
 }
 
 void DisplayUi::setRotation(uint8_t rotation) {
   rotation &= 3U;
   if (M5.Display.getRotation() == rotation) return;
   M5.Display.setRotation(rotation);
-  M5.Display.fillScreen(kBg);
+  recreateCanvas();
+  gfx().fillScreen(kBg);
+  flush();
   lastSignature_.clear();
   lastRenderMs_ = 0;
 }
 
 void DisplayUi::render(const UiState& state, uint32_t nowMs) {
   const bool animated =
-      state.mode == AppMode::Recording || state.mode == AppMode::Recognizing;
+      state.mode == AppMode::Recording || state.mode == AppMode::Recognizing ||
+      state.batteryCharging;
   const std::string signature = makeSignature(state);
   if (!animated && signature == lastSignature_) {
     return;
   }
 
   const uint32_t interval =
-      state.mode == AppMode::Recording || state.mode == AppMode::Recognizing ? 80 : 180;
+      state.mode == AppMode::Recording || state.mode == AppMode::Recognizing
+          ? 80
+          : (state.batteryCharging ? 250 : 180);
   if (state.mode == lastMode_ && nowMs - lastRenderMs_ < interval) {
     return;
   }
@@ -54,8 +85,9 @@ void DisplayUi::render(const UiState& state, uint32_t nowMs) {
   lastRenderMs_ = nowMs;
   lastSignature_ = signature;
 
-  M5.Display.startWrite();
-  drawFrame(state);
+  auto& g = gfx();
+  g.startWrite();
+  drawFrame(state, nowMs);
   switch (state.mode) {
     case AppMode::Boot:
     case AppMode::Idle:
@@ -81,7 +113,8 @@ void DisplayUi::render(const UiState& state, uint32_t nowMs) {
       break;
   }
   drawFooter(state);
-  M5.Display.endWrite();
+  g.endWrite();
+  flush();
 }
 
 bool DisplayUi::landscape() const {
@@ -117,6 +150,8 @@ std::string DisplayUi::makeSignature(const UiState& state) const {
   sig += '|';
   sig += state.pairingActive ? '1' : '0';
   sig += '|';
+  sig += state.batteryCharging ? '1' : '0';
+  sig += '|';
   sig += std::to_string(state.batteryLevel / 5);
   sig += '|';
   sig += std::to_string(state.pageIndex);
@@ -135,8 +170,8 @@ std::string DisplayUi::makeSignature(const UiState& state) const {
   return sig;
 }
 
-void DisplayUi::drawFrame(const UiState& state) {
-  auto& g = M5.Display;
+void DisplayUi::drawFrame(const UiState& state, uint32_t nowMs) {
+  auto& g = gfx();
   const int w = g.width();
   const int h = g.height();
   const int headH = landscape() ? 23 : 25;
@@ -147,38 +182,30 @@ void DisplayUi::drawFrame(const UiState& state) {
   g.fillScreen(kBg);
   g.fillRoundRect(6, 5, w - 12, headH, 5, kPanel);
   g.drawRoundRect(6, 5, w - 12, headH, 5, kLine);
-  drawHeader(state);
+  drawHeader(state, nowMs);
   g.fillRoundRect(7, pY, w - 14, pH, 6, kPanel);
   g.drawRoundRect(7, pY, w - 14, pH, 6, kLine);
   g.fillRoundRect(7, fY, w - 14, landscape() ? 17 : 25, 5, kPanel2);
 }
 
-void DisplayUi::drawHeader(const UiState& state) {
-  auto& g = M5.Display;
+void DisplayUi::drawHeader(const UiState& state, uint32_t nowMs) {
+  auto& g = gfx();
   const int w = g.width();
   g.setFont(&fonts::Font2);
   g.setTextSize(1);
   g.setTextColor(kText, kPanel);
   g.drawString("STICK ASR", 12, 10);
 
-  const int battery = state.batteryLevel;
-  const uint16_t batteryColor = battery < 0 ? kMuted : (battery < 20 ? kAmber : kGreen);
-  const int batteryX = w - 31;
-  const int batteryY = 13;
-  const int wifiX = batteryX - 16;
-  drawWifiIcon(wifiX, 17,
+  const int iconY = 8;
+  const int batteryX = w - 32;
+  const int wifiX = batteryX - 27;
+  drawWifiIcon(wifiX, iconY,
                state.wifiConnected ? kGreen : (state.pairingActive ? kAmber : kMuted));
-
-  g.drawRoundRect(batteryX, batteryY, 18, 8, 2, batteryColor);
-  g.fillRect(batteryX + 18, batteryY + 2, 2, 4, batteryColor);
-  if (battery >= 0) {
-    const int fill = battery > 95 ? 14 : battery * 14 / 100;
-    g.fillRect(batteryX + 2, batteryY + 2, fill, 4, batteryColor);
-  }
+  drawBatteryIcon(batteryX, iconY, state.batteryLevel, state.batteryCharging, nowMs);
 }
 
 void DisplayUi::drawFooter(const UiState& state) {
-  auto& g = M5.Display;
+  auto& g = gfx();
   const int fY = footerY();
   g.setFont(&fonts::efontCN_10);
   g.setTextColor(kMuted, kPanel2);
@@ -193,7 +220,7 @@ void DisplayUi::drawFooter(const UiState& state) {
 }
 
 void DisplayUi::drawIdle(const UiState& state) {
-  auto& g = M5.Display;
+  auto& g = gfx();
   const bool ready = state.asrReady && state.wifiConfigured;
   if (landscape()) {
     drawStatusPill(13, 43, ready ? "READY" : "SETUP", ready ? kCyan : kAmber);
@@ -233,7 +260,7 @@ void DisplayUi::drawIdle(const UiState& state) {
 }
 
 void DisplayUi::drawPairing(const UiState& state) {
-  auto& g = M5.Display;
+  auto& g = gfx();
   if (landscape()) {
     drawStatusPill(13, 40, "PAIR", kAmber);
     g.setFont(&fonts::efontCN_12);
@@ -283,7 +310,7 @@ void DisplayUi::drawPairing(const UiState& state) {
 }
 
 void DisplayUi::drawConnecting(const UiState& state) {
-  auto& g = M5.Display;
+  auto& g = gfx();
   if (landscape()) {
     drawStatusPill(13, 43, "NET", kAmber);
     g.setFont(&fonts::efontCN_14);
@@ -305,7 +332,7 @@ void DisplayUi::drawConnecting(const UiState& state) {
 }
 
 void DisplayUi::drawRecording(const UiState& state, uint32_t nowMs) {
-  auto& g = M5.Display;
+  auto& g = gfx();
   if (landscape()) {
     drawStatusPill(13, 40, "REC", kRed);
     g.setFont(&fonts::efontCN_14);
@@ -360,7 +387,7 @@ void DisplayUi::drawRecording(const UiState& state, uint32_t nowMs) {
 }
 
 void DisplayUi::drawRecognizing(uint32_t nowMs) {
-  auto& g = M5.Display;
+  auto& g = gfx();
   if (landscape()) {
     drawStatusPill(13, 43, "ASR", kAmber);
     g.setFont(&fonts::efontCN_14);
@@ -390,7 +417,7 @@ void DisplayUi::drawRecognizing(uint32_t nowMs) {
 }
 
 void DisplayUi::drawResult(const UiState& state) {
-  auto& g = M5.Display;
+  auto& g = gfx();
   drawStatusPill(landscape() ? 13 : 17, landscape() ? 40 : 50, "TEXT", kGreen);
   g.setFont(&fonts::efontCN_10);
   g.setTextColor(kMuted, kPanel);
@@ -404,7 +431,7 @@ void DisplayUi::drawResult(const UiState& state) {
 }
 
 void DisplayUi::drawError(const UiState& state) {
-  auto& g = M5.Display;
+  auto& g = gfx();
   if (landscape()) {
     drawStatusPill(13, 40, "ERR", kAmber);
     g.setFont(&fonts::efontCN_14);
@@ -426,7 +453,7 @@ void DisplayUi::drawError(const UiState& state) {
 }
 
 void DisplayUi::drawStatusPill(int x, int y, const char* label, uint16_t color) {
-  auto& g = M5.Display;
+  auto& g = gfx();
   g.fillRoundRect(x, y, 47, 17, 8, kPanel2);
   g.drawRoundRect(x, y, 47, 17, 8, color);
   g.setFont(&fonts::Font2);
@@ -434,10 +461,56 @@ void DisplayUi::drawStatusPill(int x, int y, const char* label, uint16_t color) 
   g.drawString(label, x + 9, y + 2);
 }
 
-void DisplayUi::drawWifiIcon(int cx, int cy, uint16_t color) {
-  auto& g = M5.Display;
-  g.fillRoundRect(cx - 12, cy - 8, 22, 17, 5, kPanel2);
-  g.drawRoundRect(cx - 12, cy - 8, 22, 17, 5, kLine);
+void DisplayUi::drawBatteryIcon(int x,
+                                int y,
+                                int batteryLevel,
+                                bool charging,
+                                uint32_t nowMs) {
+  auto& g = gfx();
+  const uint16_t color =
+      charging ? kCyan : (batteryLevel < 0 ? kMuted : (batteryLevel < 20 ? kAmber : kGreen));
+  const int bodyX = x + 4;
+  const int bodyY = y + 5;
+  const int bodyW = 14;
+  const int bodyH = 8;
+  const int innerW = bodyW - 4;
+
+  g.fillRoundRect(x, y, 24, 17, 5, kPanel2);
+  g.drawRoundRect(x, y, 24, 17, 5, kLine);
+  g.drawRoundRect(bodyX, bodyY, bodyW, bodyH, 2, color);
+  g.fillRect(bodyX + bodyW, bodyY + 2, 2, 4, color);
+
+  int fill = 0;
+  if (charging) {
+    fill = 2 + static_cast<int>((nowMs / 250) % 4U) * 3;
+    if (fill > innerW) fill = innerW;
+  } else if (batteryLevel >= 0) {
+    fill = batteryLevel > 95 ? innerW : batteryLevel * innerW / 100;
+    if (batteryLevel > 0 && fill == 0) fill = 1;
+  }
+
+  if (fill > 0) {
+    g.fillRect(bodyX + 2, bodyY + 2, fill, bodyH - 4, charging ? kCyan : color);
+  }
+
+  if (charging) {
+    const int boltX = x + 12;
+    g.drawLine(boltX + 1, y + 3, boltX - 3, y + 9, kAmber);
+    g.drawLine(boltX - 3, y + 9, boltX + 1, y + 9, kAmber);
+    g.drawLine(boltX + 1, y + 9, boltX - 2, y + 14, kAmber);
+    g.drawLine(boltX + 2, y + 3, boltX - 2, y + 9, kAmber);
+    g.drawLine(boltX - 2, y + 9, boltX + 2, y + 9, kAmber);
+    g.drawLine(boltX + 2, y + 9, boltX - 1, y + 14, kAmber);
+  }
+}
+
+void DisplayUi::drawWifiIcon(int x, int y, uint16_t color) {
+  auto& g = gfx();
+  const int cx = x + 12;
+  const int cy = y + 8;
+
+  g.fillRoundRect(x, y, 24, 17, 5, kPanel2);
+  g.drawRoundRect(x, y, 24, 17, 5, kLine);
 
   g.drawLine(cx - 7, cy - 2, cx - 5, cy - 4, color);
   g.drawFastHLine(cx - 4, cy - 5, 9, color);
@@ -453,7 +526,7 @@ void DisplayUi::drawWifiIcon(int cx, int cy, uint16_t color) {
 }
 
 void DisplayUi::drawPageText(const std::string& text, int x, int y, int lineHeight) {
-  auto& g = M5.Display;
+  auto& g = gfx();
   g.setFont(&fonts::efontCN_12);
   g.setTextColor(kText, kPanel);
   size_t start = 0;

@@ -17,6 +17,9 @@ class OrientationController {
 
   uint8_t rotation_;
   uint32_t lastChangeMs_ = 0;
+  uint8_t pendingRotation_ = 0;
+  uint32_t pendingSinceMs_ = 0;
+  bool hasPendingRotation_ = false;
 };
 
 }  // namespace stick_s3_asr
