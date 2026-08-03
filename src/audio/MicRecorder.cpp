@@ -16,7 +16,10 @@ bool MicRecorder::begin(const AudioFormat& format,
   const size_t samplesPerChunk =
       (static_cast<size_t>(format_.sampleRate) * chunkMs_) / 1000U;
   capture_.assign(samplesPerChunk, 0);
-  ring_.reset(capture_.size() * sizeof(int16_t) * queuedChunks);
+  if (!ring_.reset(capture_.size() * sizeof(int16_t) * queuedChunks)) {
+    initialized_ = false;
+    return false;
+  }
   M5.Mic.setSampleRate(format_.sampleRate);
   initialized_ = M5.Mic.begin();
   return initialized_;

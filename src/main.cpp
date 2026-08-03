@@ -28,6 +28,10 @@ constexpr uint32_t kWifiRetryMs = 10000;
 constexpr uint32_t kOrientationSampleMs = 100;
 constexpr uint32_t kStatusLogMs = 5000;
 constexpr size_t kMaxAudioChunksPerLoop = 2;
+constexpr uint16_t kRecordingChunkMs = 100;
+constexpr uint16_t kMaxRecordingSeconds = 60;
+constexpr size_t kRecordingQueuedChunks =
+    (static_cast<size_t>(kMaxRecordingSeconds) * 1000U) / kRecordingChunkMs + 10U;
 constexpr const char* kNoSpeechText = "No speech";
 constexpr size_t kPortraitColumns = 16;
 constexpr size_t kPortraitLines = 6;
@@ -718,14 +722,26 @@ void setup() {
   Serial.printf("[boot] wifiConfigured=%d asrReady=%d\n",
                 wifiConfigured ? 1 : 0,
                 asrReady ? 1 : 0);
+  Serial.printf("[boot] psram total=%lu free=%lu heap=%lu\n",
+                static_cast<unsigned long>(ESP.getPsramSize()),
+                static_cast<unsigned long>(ESP.getFreePsram()),
+                static_cast<unsigned long>(ESP.getFreeHeap()));
 
   const AudioFormat audioFormat;
-  if (!recorder.begin(audioFormat, 100, 5, 60)) {
+  if (!recorder.begin(audioFormat,
+                      kRecordingChunkMs,
+                      kMaxRecordingSeconds,
+                      kRecordingQueuedChunks)) {
     errorText = "Mic init failed";
     mode = AppMode::Error;
   } else {
     txBuffer.assign(recorder.chunkBytes(), 0);
     mode = wifiConfigured ? AppMode::Connecting : AppMode::Idle;
+    Serial.printf("[boot] recorder chunk=%u maxSec=%u buffer=%lu psram=%d\n",
+                  static_cast<unsigned>(recorder.chunkBytes()),
+                  static_cast<unsigned>(kMaxRecordingSeconds),
+                  static_cast<unsigned long>(recorder.bufferCapacityBytes()),
+                  recorder.bufferAllocatedInPsram() ? 1 : 0);
   }
 
   if (wifiConfigured) {

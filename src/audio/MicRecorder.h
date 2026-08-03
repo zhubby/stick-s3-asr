@@ -26,6 +26,8 @@ class MicRecorder {
   size_t readPcm(uint8_t* out, size_t maxBytes);
   size_t queuedBytes() const { return ring_.available(); }
   size_t chunkBytes() const { return capture_.size() * sizeof(int16_t); }
+  size_t bufferCapacityBytes() const { return ring_.capacity(); }
+  bool bufferAllocatedInPsram() const { return ring_.allocatedInPsram(); }
   bool active() const { return active_; }
   bool stopping() const { return stopRequested_; }
   bool finished() const;
