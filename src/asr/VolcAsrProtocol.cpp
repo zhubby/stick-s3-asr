@@ -6,6 +6,28 @@
 
 namespace stick_s3_asr {
 
+namespace {
+bool startsWith(const std::string& value, const char* prefix) {
+  return value.rfind(prefix, 0) == 0;
+}
+
+bool looksLikeApiKey(const std::string& value) {
+  return startsWith(value, "api-key-");
+}
+
+std::string selectApiKey(const VolcAsrConfig& config) {
+  if (!config.apiKey.empty()) return config.apiKey;
+  if (looksLikeApiKey(config.appKey) && !config.accessKey.empty()) {
+    return config.accessKey;
+  }
+  if (looksLikeApiKey(config.appKey)) return config.appKey;
+  if (looksLikeApiKey(config.accessKey)) return config.accessKey;
+  if (config.appKey.empty() && !config.accessKey.empty()) return config.accessKey;
+  if (!config.appKey.empty() && config.accessKey.empty()) return config.appKey;
+  return "";
+}
+}  // namespace
+
 std::vector<uint8_t> VolcAsrProtocol::makeFullClientRequest(
     const VolcAsrConfig& config,
     const std::string& requestId,
@@ -27,7 +49,7 @@ std::vector<uint8_t> VolcAsrProtocol::makeAudioRequest(const uint8_t* pcm,
   const int32_t wireSequence =
       finalFrame ? -std::max<int32_t>(1, sequence) : std::max<int32_t>(1, sequence);
   return makeFrame(VolcMessageType::AudioOnlyRequest,
-                   finalFrame ? kFlagNegativeSequence : kFlagPositiveSequence,
+                   finalFrame ? kFlagFinalNoSequence : kFlagPositiveSequence,
                    kSerializationNone,
                    kCompressionNone,
                    wireSequence,
@@ -144,9 +166,6 @@ VolcResponse VolcAsrProtocol::parseResponse(const uint8_t* data, size_t length) 
         isLast) {
       response.final = true;
     }
-    if (response.text.empty() && header.messageType == VolcMessageType::FullServerResponse) {
-      response.text = response.rawPayload;
-    }
   }
 
   return response;
@@ -155,8 +174,13 @@ VolcResponse VolcAsrProtocol::parseResponse(const uint8_t* data, size_t length) 
 std::string VolcAsrProtocol::makeConnectHeaders(const VolcAsrConfig& config,
                                                 const std::string& requestId) {
   std::ostringstream headers;
-  headers << "X-Api-App-Key: " << config.appKey << "\r\n";
-  headers << "X-Api-Access-Key: " << config.accessKey << "\r\n";
+  const std::string apiKey = selectApiKey(config);
+  if (!apiKey.empty()) {
+    headers << "X-Api-Key: " << apiKey << "\r\n";
+  } else {
+    headers << "X-Api-App-Key: " << config.appKey << "\r\n";
+    headers << "X-Api-Access-Key: " << config.accessKey << "\r\n";
+  }
   headers << "X-Api-Resource-Id: " << config.resourceId << "\r\n";
   headers << "X-Api-Connect-Id: " << requestId << "\r\n";
   headers << "X-Api-Request-Id: " << requestId << "\r\n";
@@ -246,7 +270,11 @@ std::string VolcAsrProtocol::extractJsonString(
         for (size_t i = valueStart; i < json.size(); ++i) {
           const char c = json[i];
           if (!escaped && c == '"') {
-            return unescapeJsonString(value);
+            const std::string parsed = unescapeJsonString(value);
+            if (!parsed.empty()) {
+              return parsed;
+            }
+            break;
           }
           value += c;
           escaped = (!escaped && c == '\\');

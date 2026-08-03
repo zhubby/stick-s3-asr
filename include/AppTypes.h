@@ -25,6 +25,7 @@ struct AudioFormat {
 
 struct VolcAsrConfig {
   std::string endpoint = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel";
+  std::string apiKey;
   std::string appKey;
   std::string accessKey;
   std::string resourceId = "volc.seedasr.sauc.duration";

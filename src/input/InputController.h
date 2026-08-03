@@ -10,7 +10,7 @@ enum class InputEvent {
   None,
   StartRecording,
   StopRecording,
-  NextPage,
+  ReturnToRecording,
 };
 
 class InputController {
@@ -18,10 +18,10 @@ class InputController {
   explicit InputController(uint32_t holdThresholdMs = 450);
 
   InputEvent update(bool recordButtonDown,
-                    bool nextPagePressed,
+                    bool returnButtonPressed,
                     AppMode mode,
                     uint32_t nowMs);
-  void resetRecordingGesture();
+  void resetRecordingGesture(bool recordButtonDown = false);
 
   bool recordingGestureActive() const { return recordingActive_; }
   uint32_t holdThresholdMs() const { return holdThresholdMs_; }
@@ -37,4 +37,3 @@ class InputController {
 };
 
 }  // namespace stick_s3_asr
-

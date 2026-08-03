@@ -8,6 +8,9 @@
 #define WIFI_PASSWORD ""
 
 // Volcengine / Doubao streaming ASR credentials.
+// New console: fill VOLC_API_KEY.
+// Legacy console: fill VOLC_APP_KEY and VOLC_ACCESS_KEY.
+#define VOLC_API_KEY "your-api-key"
 #define VOLC_APP_KEY "your-app-key-or-app-id"
 #define VOLC_ACCESS_KEY "your-access-key-or-access-token"
 

@@ -211,7 +211,7 @@ void DisplayUi::drawFooter(const UiState& state) {
   g.setTextColor(kMuted, kPanel2);
   if (state.mode == AppMode::Result) {
     g.drawString("A REC", 14, fY + (landscape() ? 3 : 7));
-    g.drawString("B PAGE", landscape() ? 158 : 79, fY + (landscape() ? 3 : 7));
+    g.drawString("B BACK", landscape() ? 154 : 75, fY + (landscape() ? 3 : 7));
   } else if (state.mode == AppMode::Pairing) {
     g.drawString("AP SETUP", 14, fY + (landscape() ? 3 : 7));
   } else {

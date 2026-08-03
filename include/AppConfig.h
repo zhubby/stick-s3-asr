@@ -22,6 +22,10 @@
 #define VOLC_ACCESS_KEY ""
 #endif
 
+#ifndef VOLC_API_KEY
+#define VOLC_API_KEY ""
+#endif
+
 #ifndef VOLC_RESOURCE_ID
 #define VOLC_RESOURCE_ID "volc.seedasr.sauc.duration"
 #endif
@@ -39,6 +43,7 @@ namespace stick_s3_asr {
 struct RuntimeConfig {
   std::string wifiSsid;
   std::string wifiPassword;
+  std::string volcApiKey;
   std::string volcAppKey;
   std::string volcAccessKey;
   std::string volcResourceId;
@@ -50,6 +55,7 @@ inline RuntimeConfig loadRuntimeConfig() {
   return {
       WIFI_SSID,
       WIFI_PASSWORD,
+      VOLC_API_KEY,
       VOLC_APP_KEY,
       VOLC_ACCESS_KEY,
       VOLC_RESOURCE_ID,
@@ -63,8 +69,14 @@ inline bool hasWifiCredentials(const RuntimeConfig& config) {
 }
 
 inline bool hasAsrSecrets(const RuntimeConfig& config) {
-  return !config.volcAppKey.empty() && !config.volcAccessKey.empty() &&
-         !config.volcResourceId.empty() && !config.volcEndpoint.empty();
+  const bool hasNewApiKey =
+      !config.volcApiKey.empty() ||
+      config.volcAppKey.rfind("api-key-", 0) == 0 ||
+      config.volcAccessKey.rfind("api-key-", 0) == 0;
+  const bool hasLegacyKeys =
+      !config.volcAppKey.empty() && !config.volcAccessKey.empty();
+  return (hasNewApiKey || hasLegacyKeys) && !config.volcResourceId.empty() &&
+         !config.volcEndpoint.empty();
 }
 
 inline bool hasRequiredSecrets(const RuntimeConfig& config) {

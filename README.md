@@ -6,13 +6,13 @@ M5Stack StickS3 firmware for push-and-hold speech-to-text with ByteDance Volceng
 
 - Hold `KEY1 / BtnA` to record.
 - Release `KEY1 / BtnA` to stop recording and wait for transcription.
-- Press `KEY2 / BtnB` to move to the next text page.
+- Press `KEY2 / BtnB` on the result screen to return to the record-ready screen.
 - The hardware reset key remains a reset key.
 
 ## Setup
 
 1. Copy `include/config.example.h` to `include/config.local.h`.
-2. Fill in Volcengine ASR credentials. Wi-Fi can stay empty if you want to use device pairing.
+2. Fill in Volcengine ASR credentials. For the new console, set `VOLC_API_KEY`; for the legacy console, set `VOLC_APP_KEY` and `VOLC_ACCESS_KEY`. Wi-Fi can stay empty if you want to use device pairing.
 3. Use `volc.seedasr.sauc.duration` for Doubao streaming ASR 2.0 hourly resources. Use `volc.bigasr.sauc.duration` only for older ASR 1.0 applications.
 4. Build and upload with PlatformIO:
 

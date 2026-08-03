@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "AppConfig.h"
+#include "AppRuntime.h"
 #include "asr/VolcAsrProtocol.h"
 #include "audio/AudioBuffer.h"
 #include "input/InputController.h"
@@ -35,11 +36,11 @@ void test_short_press_is_ignored() {
                     static_cast<int>(input.update(false, false, AppMode::Idle, 200)));
 }
 
-void test_next_page_only_in_result_mode() {
+void test_return_to_recording_only_in_result_mode() {
   InputController input(450);
   TEST_ASSERT_EQUAL(static_cast<int>(InputEvent::None),
                     static_cast<int>(input.update(false, true, AppMode::Idle, 0)));
-  TEST_ASSERT_EQUAL(static_cast<int>(InputEvent::NextPage),
+  TEST_ASSERT_EQUAL(static_cast<int>(InputEvent::ReturnToRecording),
                     static_cast<int>(input.update(false, true, AppMode::Result, 1)));
 }
 
@@ -54,8 +55,35 @@ void test_pairing_mode_ignores_record_and_page_buttons() {
   TEST_ASSERT_FALSE(input.recordingGestureActive());
 }
 
+void test_reset_while_button_down_requires_release_before_restart() {
+  InputController input(450);
+  TEST_ASSERT_EQUAL(static_cast<int>(InputEvent::None),
+                    static_cast<int>(input.update(true, false, AppMode::Idle, 1000)));
+  TEST_ASSERT_EQUAL(static_cast<int>(InputEvent::StartRecording),
+                    static_cast<int>(input.update(true, false, AppMode::Idle, 1450)));
+
+  input.resetRecordingGesture(true);
+  TEST_ASSERT_EQUAL(static_cast<int>(InputEvent::None),
+                    static_cast<int>(input.update(true, false, AppMode::Idle, 3000)));
+  TEST_ASSERT_EQUAL(static_cast<int>(InputEvent::None),
+                    static_cast<int>(input.update(false, false, AppMode::Idle, 3100)));
+  TEST_ASSERT_EQUAL(static_cast<int>(InputEvent::None),
+                    static_cast<int>(input.update(true, false, AppMode::Idle, 3200)));
+  TEST_ASSERT_EQUAL(static_cast<int>(InputEvent::StartRecording),
+                    static_cast<int>(input.update(true, false, AppMode::Idle, 3650)));
+}
+
 void test_runtime_config_splits_wifi_and_asr_readiness() {
   RuntimeConfig config;
+  config.volcApiKey = "api-key-new-console";
+  config.volcResourceId = "volc.seedasr.sauc.duration";
+  config.volcEndpoint = "wss://openspeech.bytedance.com/api/v3/sauc/bigmodel";
+
+  TEST_ASSERT_TRUE(hasAsrSecrets(config));
+  TEST_ASSERT_FALSE(hasWifiCredentials(config));
+  TEST_ASSERT_FALSE(hasRequiredSecrets(config));
+
+  config = {};
   config.volcAppKey = "app";
   config.volcAccessKey = "access";
   config.volcResourceId = "volc.seedasr.sauc.duration";
@@ -68,6 +96,25 @@ void test_runtime_config_splits_wifi_and_asr_readiness() {
   config.wifiSsid = "lab";
   TEST_ASSERT_TRUE(hasWifiCredentials(config));
   TEST_ASSERT_TRUE(hasRequiredSecrets(config));
+}
+
+void test_error_recovery_uses_explicit_policy() {
+  TEST_ASSERT_TRUE(errorRecoveryIsNetworkRecoverable(ErrorRecovery::RecoverableNetwork));
+  TEST_ASSERT_FALSE(errorRecoveryIsNetworkRecoverable(ErrorRecovery::Fatal));
+}
+
+void test_loop_delay_keeps_streaming_fast_and_idle_cooler() {
+  TEST_ASSERT_EQUAL_UINT16(2, appLoopDelayMs(AppMode::Recording, true, false));
+  TEST_ASSERT_EQUAL_UINT16(2, appLoopDelayMs(AppMode::Recognizing, true, false));
+  TEST_ASSERT_EQUAL_UINT16(2, appLoopDelayMs(AppMode::Connecting, true, false));
+  TEST_ASSERT_EQUAL_UINT16(10, appLoopDelayMs(AppMode::Recognizing, false, false));
+  TEST_ASSERT_EQUAL_UINT16(10, appLoopDelayMs(AppMode::Connecting, false, false));
+  TEST_ASSERT_EQUAL_UINT16(10, appLoopDelayMs(AppMode::Pairing, false, false));
+  TEST_ASSERT_EQUAL_UINT16(10, appLoopDelayMs(AppMode::Pairing, false, true));
+  TEST_ASSERT_EQUAL_UINT16(10, appLoopDelayMs(AppMode::Idle, false, true));
+  TEST_ASSERT_EQUAL_UINT16(10, appLoopDelayMs(AppMode::Error, false, true));
+  TEST_ASSERT_EQUAL_UINT16(25, appLoopDelayMs(AppMode::Idle, false, false));
+  TEST_ASSERT_EQUAL_UINT16(25, appLoopDelayMs(AppMode::Error, false, false));
 }
 
 void test_orientation_controller_defaults_landscape_and_rotates_with_tilt() {
@@ -185,7 +232,7 @@ void test_volc_full_request_frame_contains_json_payload() {
   TEST_ASSERT_NOT_EQUAL(std::string::npos, payload.find("\"model_name\":\"bigmodel\""));
 }
 
-void test_volc_audio_final_frame_uses_negative_sequence() {
+void test_volc_audio_final_frame_uses_final_flag_without_sequence() {
   const uint8_t pcm[] = {0x01, 0x02};
   const auto frame = VolcAsrProtocol::makeAudioRequest(pcm, sizeof(pcm), 3, true);
   VolcFrameHeader header;
@@ -193,8 +240,62 @@ void test_volc_audio_final_frame_uses_negative_sequence() {
   TEST_ASSERT_TRUE(VolcAsrProtocol::parseHeader(frame.data(), frame.size(), header, error));
   TEST_ASSERT_EQUAL(static_cast<int>(VolcMessageType::AudioOnlyRequest),
                     static_cast<int>(header.messageType));
-  TEST_ASSERT_EQUAL(-3, header.sequence);
+  TEST_ASSERT_TRUE(header.finalPackage);
+  TEST_ASSERT_FALSE(header.hasSequence);
   TEST_ASSERT_EQUAL_UINT32(sizeof(pcm), header.payloadSize);
+}
+
+void test_volc_connect_headers_use_new_console_api_key() {
+  VolcAsrConfig config;
+  config.apiKey = "api-key-explicit";
+  config.appKey = "legacy-app";
+  config.accessKey = "legacy-access";
+  config.resourceId = "volc.seedasr.sauc.duration";
+
+  const std::string headers = VolcAsrProtocol::makeConnectHeaders(config, "req-1");
+  TEST_ASSERT_NOT_EQUAL(std::string::npos,
+                        headers.find("X-Api-Key: api-key-explicit\r\n"));
+  TEST_ASSERT_EQUAL(std::string::npos, headers.find("X-Api-App-Key:"));
+  TEST_ASSERT_NOT_EQUAL(std::string::npos,
+                        headers.find("X-Api-Resource-Id: volc.seedasr.sauc.duration\r\n"));
+  TEST_ASSERT_NOT_EQUAL(std::string::npos,
+                        headers.find("X-Api-Connect-Id: req-1\r\n"));
+}
+
+void test_volc_connect_headers_use_access_key_when_app_field_is_api_key_id() {
+  VolcAsrConfig config;
+  config.appKey = "api-key-20260728172218";
+  config.accessKey = "valid-api-key-secret";
+  config.resourceId = "volc.seedasr.sauc.duration";
+
+  const std::string headers = VolcAsrProtocol::makeConnectHeaders(config, "req-2");
+  TEST_ASSERT_NOT_EQUAL(std::string::npos,
+                        headers.find("X-Api-Key: valid-api-key-secret\r\n"));
+  TEST_ASSERT_EQUAL(std::string::npos, headers.find("X-Api-Access-Key:"));
+}
+
+void test_volc_connect_headers_use_api_key_app_field_when_it_is_the_only_key() {
+  VolcAsrConfig config;
+  config.appKey = "api-key-20260728172218";
+  config.resourceId = "volc.seedasr.sauc.duration";
+
+  const std::string headers = VolcAsrProtocol::makeConnectHeaders(config, "req-4");
+  TEST_ASSERT_NOT_EQUAL(std::string::npos,
+                        headers.find("X-Api-Key: api-key-20260728172218\r\n"));
+}
+
+void test_volc_connect_headers_keep_legacy_app_access_keys() {
+  VolcAsrConfig config;
+  config.appKey = "legacy-app";
+  config.accessKey = "legacy-access";
+  config.resourceId = "volc.bigasr.sauc.duration";
+
+  const std::string headers = VolcAsrProtocol::makeConnectHeaders(config, "req-3");
+  TEST_ASSERT_NOT_EQUAL(std::string::npos,
+                        headers.find("X-Api-App-Key: legacy-app\r\n"));
+  TEST_ASSERT_NOT_EQUAL(std::string::npos,
+                        headers.find("X-Api-Access-Key: legacy-access\r\n"));
+  TEST_ASSERT_EQUAL(std::string::npos, headers.find("X-Api-Key:"));
 }
 
 void test_volc_response_parses_text() {
@@ -219,6 +320,55 @@ void test_volc_response_parses_text() {
   TEST_ASSERT_TRUE(response.error.empty());
   TEST_ASSERT_TRUE(response.final);
   TEST_ASSERT_EQUAL_STRING("你好", response.text.c_str());
+}
+
+void test_volc_response_ignores_empty_text_and_keeps_searching() {
+  const std::string payload =
+      "{\"result\":{\"text\":\"\",\"utterances\":[{\"text\":\"你好测试\"}]}}";
+  std::vector<uint8_t> frame = {
+      0x11,
+      static_cast<uint8_t>((static_cast<uint8_t>(VolcMessageType::FullServerResponse) << 4) |
+                           VolcAsrProtocol::kFlagPositiveSequence),
+      static_cast<uint8_t>(VolcAsrProtocol::kSerializationJson << 4),
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x01,
+      0x00,
+      0x00,
+      0x00,
+      static_cast<uint8_t>(payload.size()),
+  };
+  frame.insert(frame.end(), payload.begin(), payload.end());
+  const VolcResponse response = VolcAsrProtocol::parseResponse(frame.data(), frame.size());
+  TEST_ASSERT_TRUE(response.error.empty());
+  TEST_ASSERT_EQUAL_STRING("你好测试", response.text.c_str());
+}
+
+void test_volc_response_empty_text_does_not_expose_raw_json_as_result() {
+  const std::string payload =
+      "{\"audio_info\":{\"duration\":100},\"result\":{\"additions\":{\"log_id\":\"abc\"},\"text\":\"\"}}";
+  std::vector<uint8_t> frame = {
+      0x11,
+      static_cast<uint8_t>((static_cast<uint8_t>(VolcMessageType::FullServerResponse) << 4) |
+                           VolcAsrProtocol::kFlagPositiveSequence),
+      static_cast<uint8_t>(VolcAsrProtocol::kSerializationJson << 4),
+      0x00,
+      0x00,
+      0x00,
+      0x00,
+      0x01,
+      0x00,
+      0x00,
+      0x00,
+      static_cast<uint8_t>(payload.size()),
+  };
+  frame.insert(frame.end(), payload.begin(), payload.end());
+  const VolcResponse response = VolcAsrProtocol::parseResponse(frame.data(), frame.size());
+  TEST_ASSERT_TRUE(response.error.empty());
+  TEST_ASSERT_TRUE(response.text.empty());
+  TEST_ASSERT_EQUAL_STRING(payload.c_str(), response.rawPayload.c_str());
 }
 
 void test_volc_response_final_flag_marks_completion_without_negative_sequence() {
@@ -315,9 +465,12 @@ int main(int argc, char** argv) {
   UNITY_BEGIN();
   RUN_TEST(test_long_press_starts_and_release_stops);
   RUN_TEST(test_short_press_is_ignored);
-  RUN_TEST(test_next_page_only_in_result_mode);
+  RUN_TEST(test_return_to_recording_only_in_result_mode);
   RUN_TEST(test_pairing_mode_ignores_record_and_page_buttons);
+  RUN_TEST(test_reset_while_button_down_requires_release_before_restart);
   RUN_TEST(test_runtime_config_splits_wifi_and_asr_readiness);
+  RUN_TEST(test_error_recovery_uses_explicit_policy);
+  RUN_TEST(test_loop_delay_keeps_streaming_fast_and_idle_cooler);
   RUN_TEST(test_orientation_controller_defaults_landscape_and_rotates_with_tilt);
   RUN_TEST(test_page_model_rebuilds_when_layout_changes);
   RUN_TEST(test_page_model_wraps_utf8_and_cycles_pages);
@@ -325,8 +478,14 @@ int main(int argc, char** argv) {
   RUN_TEST(test_audio_ring_buffer_write_all_preserves_existing_bytes_on_overflow);
   RUN_TEST(test_pcm_peak_handles_negative_samples);
   RUN_TEST(test_volc_full_request_frame_contains_json_payload);
-  RUN_TEST(test_volc_audio_final_frame_uses_negative_sequence);
+  RUN_TEST(test_volc_audio_final_frame_uses_final_flag_without_sequence);
+  RUN_TEST(test_volc_connect_headers_use_new_console_api_key);
+  RUN_TEST(test_volc_connect_headers_use_access_key_when_app_field_is_api_key_id);
+  RUN_TEST(test_volc_connect_headers_use_api_key_app_field_when_it_is_the_only_key);
+  RUN_TEST(test_volc_connect_headers_keep_legacy_app_access_keys);
   RUN_TEST(test_volc_response_parses_text);
+  RUN_TEST(test_volc_response_ignores_empty_text_and_keeps_searching);
+  RUN_TEST(test_volc_response_empty_text_does_not_expose_raw_json_as_result);
   RUN_TEST(test_volc_response_final_flag_marks_completion_without_negative_sequence);
   RUN_TEST(test_volc_response_json_last_package_marks_completion);
   RUN_TEST(test_volc_error_response_parses_code_and_message);

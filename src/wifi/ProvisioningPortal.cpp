@@ -54,7 +54,7 @@ bool ProvisioningPortal::begin(const std::string& apSsid,
     routesConfigured_ = true;
   }
 
-  WiFi.mode(WIFI_AP);
+  WiFi.mode(WIFI_AP_STA);
   WiFi.softAPConfig(kApIp, kApGateway, kApSubnet);
   const bool apStarted =
       apPassword_.empty()

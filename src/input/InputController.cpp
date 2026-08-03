@@ -6,11 +6,11 @@ InputController::InputController(uint32_t holdThresholdMs)
     : holdThresholdMs_(holdThresholdMs) {}
 
 InputEvent InputController::update(bool recordButtonDown,
-                                   bool nextPagePressed,
+                                   bool returnButtonPressed,
                                    AppMode mode,
                                    uint32_t nowMs) {
-  if (nextPagePressed && mode == AppMode::Result && !recordingActive_) {
-    return InputEvent::NextPage;
+  if (returnButtonPressed && mode == AppMode::Result && !recordingActive_) {
+    return InputEvent::ReturnToRecording;
   }
 
   if (recordButtonDown && !recordButtonWasDown_) {
@@ -38,8 +38,8 @@ InputEvent InputController::update(bool recordButtonDown,
   return InputEvent::None;
 }
 
-void InputController::resetRecordingGesture() {
-  recordButtonWasDown_ = false;
+void InputController::resetRecordingGesture(bool recordButtonDown) {
+  recordButtonWasDown_ = recordButtonDown;
   holdCandidate_ = false;
   recordingActive_ = false;
   pressedAtMs_ = 0;
@@ -51,4 +51,3 @@ bool InputController::canStartRecording(AppMode mode) const {
 }
 
 }  // namespace stick_s3_asr
-

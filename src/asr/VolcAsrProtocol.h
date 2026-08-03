@@ -49,6 +49,7 @@ class VolcAsrProtocol {
   static constexpr uint8_t kHeaderSizeWords = 0x1;
   static constexpr uint8_t kFlagNoSequence = 0x0;
   static constexpr uint8_t kFlagPositiveSequence = 0x1;
+  static constexpr uint8_t kFlagFinalNoSequence = 0x2;
   static constexpr uint8_t kFlagNegativeSequence = 0x3;
   static constexpr uint8_t kSerializationNone = 0x0;
   static constexpr uint8_t kSerializationJson = 0x1;
