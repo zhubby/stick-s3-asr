@@ -679,7 +679,7 @@ UiState buildUiState(uint32_t nowMs) {
 
 void handleInput(uint32_t nowMs) {
   const InputEvent event = inputController.update(M5.BtnA.isPressed(),
-                                                  M5.BtnB.wasPressed(),
+                                                  M5.BtnB.isPressed(),
                                                   mode,
                                                   nowMs);
   switch (event) {
@@ -688,6 +688,11 @@ void handleInput(uint32_t nowMs) {
       break;
     case InputEvent::StopRecording:
       stopRecording(nowMs);
+      break;
+    case InputEvent::NextPage:
+      if (mode == AppMode::Result) {
+        pageModel.nextPage();
+      }
       break;
     case InputEvent::ReturnToRecording:
       returnToRecordReady();

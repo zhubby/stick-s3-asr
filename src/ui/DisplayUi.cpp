@@ -15,6 +15,10 @@ constexpr uint16_t kCyan = 0x27FF;
 constexpr uint16_t kGreen = 0x6FE8;
 constexpr uint16_t kAmber = 0xFDC0;
 constexpr uint16_t kRed = 0xF9E7;
+
+bool footerVisible(AppMode mode) {
+  return mode == AppMode::Result || mode == AppMode::Pairing;
+}
 }
 
 LovyanGFX& DisplayUi::gfx() {
@@ -125,8 +129,11 @@ int DisplayUi::panelY() const {
   return landscape() ? 32 : 37;
 }
 
-int DisplayUi::panelH() const {
-  return landscape() ? 78 : 164;
+int DisplayUi::panelH(AppMode mode) const {
+  if (footerVisible(mode)) {
+    return landscape() ? 78 : 164;
+  }
+  return M5.Display.height() - panelY() - (landscape() ? 6 : 7);
 }
 
 int DisplayUi::footerY() const {
@@ -173,19 +180,19 @@ std::string DisplayUi::makeSignature(const UiState& state) const {
 void DisplayUi::drawFrame(const UiState& state, uint32_t nowMs) {
   auto& g = gfx();
   const int w = g.width();
-  const int h = g.height();
   const int headH = landscape() ? 23 : 25;
   const int pY = panelY();
-  const int pH = panelH();
+  const int pH = panelH(state.mode);
   const int fY = footerY();
-  (void)h;
   g.fillScreen(kBg);
   g.fillRoundRect(6, 5, w - 12, headH, 5, kPanel);
   g.drawRoundRect(6, 5, w - 12, headH, 5, kLine);
   drawHeader(state, nowMs);
   g.fillRoundRect(7, pY, w - 14, pH, 6, kPanel);
   g.drawRoundRect(7, pY, w - 14, pH, 6, kLine);
-  g.fillRoundRect(7, fY, w - 14, landscape() ? 17 : 25, 5, kPanel2);
+  if (footerVisible(state.mode)) {
+    g.fillRoundRect(7, fY, w - 14, landscape() ? 17 : 25, 5, kPanel2);
+  }
 }
 
 void DisplayUi::drawHeader(const UiState& state, uint32_t nowMs) {
@@ -205,17 +212,17 @@ void DisplayUi::drawHeader(const UiState& state, uint32_t nowMs) {
 }
 
 void DisplayUi::drawFooter(const UiState& state) {
+  if (!footerVisible(state.mode)) return;
+
   auto& g = gfx();
   const int fY = footerY();
   g.setFont(&fonts::efontCN_10);
   g.setTextColor(kMuted, kPanel2);
   if (state.mode == AppMode::Result) {
     g.drawString("A REC", 14, fY + (landscape() ? 3 : 7));
-    g.drawString("B BACK", landscape() ? 154 : 75, fY + (landscape() ? 3 : 7));
+    g.drawString("B PAGE", landscape() ? 154 : 75, fY + (landscape() ? 3 : 7));
   } else if (state.mode == AppMode::Pairing) {
     g.drawString("AP SETUP", 14, fY + (landscape() ? 3 : 7));
-  } else {
-    g.drawString("A HOLD", 14, fY + (landscape() ? 3 : 7));
   }
 }
 
@@ -223,40 +230,41 @@ void DisplayUi::drawIdle(const UiState& state) {
   auto& g = gfx();
   const bool ready = state.asrReady && state.wifiConfigured;
   if (landscape()) {
-    drawStatusPill(13, 43, ready ? "READY" : "SETUP", ready ? kCyan : kAmber);
+    drawStatusIcon(37, 51, ready ? StatusGlyph::Check : StatusGlyph::Alert,
+                   ready ? kGreen : kAmber);
     g.setFont(&fonts::efontCN_14);
     g.setTextColor(kText, kPanel);
     g.drawString("ASR", 75, 43);
     g.setFont(&fonts::efontCN_12);
     g.setTextColor(kMuted, kPanel);
-    const char* line =
-        !state.asrReady ? "NO KEY"
-                        : (!state.wifiConfigured ? "AP SETUP" : "HOLD A");
-    g.drawString(line, 18, 74);
-    g.drawRoundRect(155, 42, 66, 20, 10, ready ? kCyan : kAmber);
-    g.setTextColor(ready ? kCyan : kAmber, kPanel);
-    g.drawString(ready ? "CLOUD" : "SETUP", 168, 46);
+    if (!state.asrReady) {
+      g.drawString("NO KEY", 18, 74);
+    } else if (!state.wifiConfigured) {
+      g.drawString("AP SETUP", 18, 74);
+    } else {
+      drawHoldRecordPrompt(117, 80, kCyan);
+    }
     return;
   }
 
-  drawStatusPill(17, 50, ready ? "READY" : "SETUP", ready ? kCyan : kAmber);
+  const int centerX = g.width() / 2;
+  drawStatusIcon(centerX, 66, ready ? StatusGlyph::Check : StatusGlyph::Alert,
+                 ready ? kGreen : kAmber);
   g.setFont(&fonts::efontCN_16);
   g.setTextColor(kText, kPanel);
-  g.drawString("ASR", 50, 78);
+  g.setTextDatum(middle_center);
+  g.drawString("ASR", centerX, 104);
   g.setFont(&fonts::efontCN_12);
   g.setTextColor(kMuted, kPanel);
   if (!state.asrReady) {
-    g.drawString("NO KEY", 43, 111);
+    g.drawString("NO KEY", centerX, 149);
   } else if (!state.wifiConfigured) {
-    g.drawString("AP SETUP", 34, 111);
+    g.drawString("AP SETUP", centerX, 149);
   } else {
-    g.drawString("HOLD A", 40, 111);
-    g.drawString("RELEASE", 37, 132);
+    drawHoldRecordPrompt(centerX, 160, kCyan);
   }
+  g.setTextDatum(top_left);
 
-  g.drawRoundRect(31, 165, 73, 20, 10, ready ? kCyan : kAmber);
-  g.setTextColor(ready ? kCyan : kAmber, kPanel);
-  g.drawString(ready ? "CLOUD" : "SETUP", 48, 169);
 }
 
 void DisplayUi::drawPairing(const UiState& state) {
@@ -318,7 +326,11 @@ void DisplayUi::drawConnecting(const UiState& state) {
     g.drawString(state.wifiConnected ? "ASR" : "Wi-Fi", 76, 43);
     g.setTextColor(kMuted, kPanel);
     g.setFont(&fonts::efontCN_12);
-    g.drawString(state.wifiConnected ? "HOLD" : "AP IF FAIL", 18, 75);
+    if (state.wifiConnected) {
+      drawHoldRecordPrompt(117, 80, kCyan);
+    } else {
+      g.drawString("AP IF FAIL", 18, 75);
+    }
     return;
   }
 
@@ -328,13 +340,17 @@ void DisplayUi::drawConnecting(const UiState& state) {
   g.drawString(state.wifiConnected ? "ASR" : "Wi-Fi", 45, 87);
   g.setTextColor(kMuted, kPanel);
   g.setFont(&fonts::efontCN_12);
-  g.drawString(state.wifiConnected ? "HOLD" : "AP IF FAIL", 35, 122);
+  if (state.wifiConnected) {
+    drawHoldRecordPrompt(g.width() / 2, 137, kCyan);
+  } else {
+    g.drawString("AP IF FAIL", 35, 122);
+  }
 }
 
 void DisplayUi::drawRecording(const UiState& state, uint32_t nowMs) {
   auto& g = gfx();
   if (landscape()) {
-    drawStatusPill(13, 40, "REC", kRed);
+    drawStatusIcon(37, 51, StatusGlyph::Record, kRed);
     g.setFont(&fonts::efontCN_14);
     g.setTextColor(kText, kPanel);
     g.drawString("LISTEN", 75, 41);
@@ -361,12 +377,15 @@ void DisplayUi::drawRecording(const UiState& state, uint32_t nowMs) {
     return;
   }
 
-  drawStatusPill(17, 50, "REC", kRed);
+  const int centerX = g.width() / 2;
+  drawStatusIcon(centerX, 66, StatusGlyph::Record, kRed);
   g.setFont(&fonts::efontCN_14);
   g.setTextColor(kText, kPanel);
-  g.drawString("LISTEN", 38, 72);
+  g.setTextDatum(middle_center);
+  g.drawString("LISTEN", centerX, 98);
+  g.setTextDatum(top_left);
 
-  const int centerY = 128;
+  const int centerY = 134;
   const int peak = static_cast<int>(state.peak) * 36 / 32768;
   for (int i = 0; i < 9; ++i) {
     const int x = 22 + i * 10;
@@ -389,7 +408,7 @@ void DisplayUi::drawRecording(const UiState& state, uint32_t nowMs) {
 void DisplayUi::drawRecognizing(uint32_t nowMs) {
   auto& g = gfx();
   if (landscape()) {
-    drawStatusPill(13, 43, "ASR", kAmber);
+    drawStatusIcon(37, 52, StatusGlyph::Asr, kAmber);
     g.setFont(&fonts::efontCN_14);
     g.setTextColor(kText, kPanel);
     g.drawString("ASR", 76, 43);
@@ -403,10 +422,13 @@ void DisplayUi::drawRecognizing(uint32_t nowMs) {
     return;
   }
 
-  drawStatusPill(17, 50, "ASR", kAmber);
+  const int centerX = g.width() / 2;
+  drawStatusIcon(centerX, 66, StatusGlyph::Asr, kAmber);
   g.setFont(&fonts::efontCN_14);
   g.setTextColor(kText, kPanel);
-  g.drawString("ASR", 52, 83);
+  g.setTextDatum(middle_center);
+  g.drawString("ASR", centerX, 98);
+  g.setTextDatum(top_left);
   for (int i = 0; i < 4; ++i) {
     const bool active = ((nowMs / 180) % 4) == static_cast<uint32_t>(i);
     g.fillCircle(47 + i * 14, 131, active ? 5 : 3, active ? kCyan : kLine);
@@ -418,7 +440,7 @@ void DisplayUi::drawRecognizing(uint32_t nowMs) {
 
 void DisplayUi::drawResult(const UiState& state) {
   auto& g = gfx();
-  drawStatusPill(landscape() ? 13 : 17, landscape() ? 40 : 50, "TEXT", kGreen);
+  drawStatusIcon(landscape() ? 37 : 34, landscape() ? 51 : 66, StatusGlyph::Text, kGreen);
   g.setFont(&fonts::efontCN_10);
   g.setTextColor(kMuted, kPanel);
   char pageLabel[20];
@@ -426,14 +448,14 @@ void DisplayUi::drawResult(const UiState& state) {
            static_cast<unsigned>(state.pageIndex + 1),
            static_cast<unsigned>(state.pageCount));
   g.drawString(pageLabel, landscape() ? 203 : 99, landscape() ? 42 : 52);
-  drawPageText(state.pageText, landscape() ? 15 : 15, landscape() ? 62 : 73,
+  drawPageText(state.pageText, landscape() ? 15 : 15, landscape() ? 68 : 88,
                landscape() ? 16 : 20);
 }
 
 void DisplayUi::drawError(const UiState& state) {
   auto& g = gfx();
   if (landscape()) {
-    drawStatusPill(13, 40, "ERR", kAmber);
+    drawStatusIcon(37, 51, StatusGlyph::Alert, kAmber);
     g.setFont(&fonts::efontCN_14);
     g.setTextColor(kAmber, kPanel);
     g.drawString("ERROR", 76, 42);
@@ -443,13 +465,16 @@ void DisplayUi::drawError(const UiState& state) {
     return;
   }
 
-  drawStatusPill(17, 50, "ERR", kAmber);
+  const int centerX = g.width() / 2;
+  drawStatusIcon(centerX, 66, StatusGlyph::Alert, kAmber);
   g.setFont(&fonts::efontCN_14);
   g.setTextColor(kAmber, kPanel);
-  g.drawString("ERROR", 39, 75);
+  g.setTextDatum(middle_center);
+  g.drawString("ERROR", centerX, 98);
+  g.setTextDatum(top_left);
   g.setFont(&fonts::efontCN_10);
   g.setTextColor(kText, kPanel);
-  drawPageText(state.errorText.empty() ? "Error" : state.errorText, 17, 111, 17);
+  drawPageText(state.errorText.empty() ? "Error" : state.errorText, 17, 124, 17);
 }
 
 void DisplayUi::drawStatusPill(int x, int y, const char* label, uint16_t color) {
@@ -459,6 +484,80 @@ void DisplayUi::drawStatusPill(int x, int y, const char* label, uint16_t color) 
   g.setFont(&fonts::Font2);
   g.setTextColor(color, kPanel2);
   g.drawString(label, x + 9, y + 2);
+}
+
+void DisplayUi::drawStatusIcon(int centerX, int centerY, StatusGlyph glyph, uint16_t color) {
+  auto& g = gfx();
+  const uint16_t glyphColor = kPanel2;
+  const int radius = landscape() ? 12 : 13;
+
+  g.fillCircle(centerX, centerY, radius + 4, kPanel2);
+  g.drawCircle(centerX, centerY, radius + 4, kLine);
+  g.fillCircle(centerX, centerY, radius, color);
+
+  switch (glyph) {
+    case StatusGlyph::Check:
+      g.drawLine(centerX - 6, centerY, centerX - 2, centerY + 5, glyphColor);
+      g.drawLine(centerX - 2, centerY + 5, centerX + 7, centerY - 6, glyphColor);
+      g.drawLine(centerX - 6, centerY + 1, centerX - 2, centerY + 6, glyphColor);
+      g.drawLine(centerX - 2, centerY + 6, centerX + 7, centerY - 5, glyphColor);
+      break;
+    case StatusGlyph::Alert:
+      g.drawFastVLine(centerX - 1, centerY - 7, 10, glyphColor);
+      g.drawFastVLine(centerX, centerY - 7, 10, glyphColor);
+      g.drawFastVLine(centerX + 1, centerY - 7, 10, glyphColor);
+      g.fillCircle(centerX, centerY + 7, 2, glyphColor);
+      break;
+    case StatusGlyph::Record:
+      g.drawCircle(centerX, centerY, 5, glyphColor);
+      g.drawCircle(centerX, centerY, 6, glyphColor);
+      g.fillCircle(centerX, centerY, 2, glyphColor);
+      break;
+    case StatusGlyph::Asr:
+      g.drawFastVLine(centerX - 6, centerY - 4, 8, glyphColor);
+      g.drawFastVLine(centerX - 5, centerY - 4, 8, glyphColor);
+      g.drawFastVLine(centerX, centerY - 7, 14, glyphColor);
+      g.drawFastVLine(centerX + 1, centerY - 7, 14, glyphColor);
+      g.drawFastVLine(centerX + 6, centerY - 4, 8, glyphColor);
+      g.drawFastVLine(centerX + 7, centerY - 4, 8, glyphColor);
+      break;
+    case StatusGlyph::Text:
+      g.drawFastHLine(centerX - 7, centerY - 6, 14, glyphColor);
+      g.drawFastHLine(centerX - 7, centerY - 5, 14, glyphColor);
+      g.drawFastHLine(centerX - 7, centerY, 14, glyphColor);
+      g.drawFastHLine(centerX - 7, centerY + 1, 14, glyphColor);
+      g.drawFastHLine(centerX - 7, centerY + 6, 10, glyphColor);
+      g.drawFastHLine(centerX - 7, centerY + 7, 10, glyphColor);
+      break;
+  }
+}
+
+void DisplayUi::drawHoldRecordPrompt(int centerX, int centerY, uint16_t color) {
+  auto& g = gfx();
+  const int buttonR = landscape() ? 14 : 17;
+  const int haloR = buttonR + 4;
+
+  g.fillCircle(centerX, centerY, haloR, kPanel2);
+  g.drawCircle(centerX, centerY, haloR, kLine);
+  g.drawCircle(centerX, centerY, buttonR, color);
+  g.drawCircle(centerX, centerY, buttonR - 2, color);
+
+  g.setFont(&fonts::Font2);
+  g.setTextDatum(middle_center);
+  g.setTextColor(kText, kPanel2);
+  g.drawString("A", centerX, centerY + 1);
+  g.setTextDatum(top_left);
+
+  const int micY = centerY + buttonR + (landscape() ? 7 : 9);
+  g.drawRoundRect(centerX - 5, micY, 10, 14, 4, color);
+  g.drawFastVLine(centerX, micY + 14, 6, color);
+  g.drawFastHLine(centerX - 7, micY + 20, 14, color);
+  g.drawArc(centerX, micY + 8, 10, 8, 30, 150, color);
+
+  const int pressY = centerY - buttonR - 7;
+  g.drawFastVLine(centerX, pressY, 4, color);
+  g.drawLine(centerX - 8, pressY + 2, centerX - 4, pressY + 5, color);
+  g.drawLine(centerX + 8, pressY + 2, centerX + 4, pressY + 5, color);
 }
 
 void DisplayUi::drawBatteryIcon(int x,
@@ -491,16 +590,6 @@ void DisplayUi::drawBatteryIcon(int x,
 
   if (fill > 0) {
     g.fillRect(bodyX + 2, bodyY + 2, fill, bodyH - 4, charging ? kCyan : color);
-  }
-
-  if (charging) {
-    const int boltX = x + 12;
-    g.drawLine(boltX + 1, y + 3, boltX - 3, y + 9, kAmber);
-    g.drawLine(boltX - 3, y + 9, boltX + 1, y + 9, kAmber);
-    g.drawLine(boltX + 1, y + 9, boltX - 2, y + 14, kAmber);
-    g.drawLine(boltX + 2, y + 3, boltX - 2, y + 9, kAmber);
-    g.drawLine(boltX - 2, y + 9, boltX + 2, y + 9, kAmber);
-    g.drawLine(boltX + 2, y + 9, boltX - 1, y + 14, kAmber);
   }
 }
 

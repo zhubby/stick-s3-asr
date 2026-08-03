@@ -41,7 +41,7 @@ class DisplayUi {
   std::string makeSignature(const UiState& state) const;
   bool landscape() const;
   int panelY() const;
-  int panelH() const;
+  int panelH(AppMode mode) const;
   int footerY() const;
   int textLineLimit() const;
   LovyanGFX& gfx();
@@ -58,7 +58,10 @@ class DisplayUi {
   void drawRecognizing(uint32_t nowMs);
   void drawResult(const UiState& state);
   void drawError(const UiState& state);
+  enum class StatusGlyph { Check, Alert, Record, Asr, Text };
   void drawStatusPill(int x, int y, const char* label, uint16_t color);
+  void drawStatusIcon(int centerX, int centerY, StatusGlyph glyph, uint16_t color);
+  void drawHoldRecordPrompt(int centerX, int centerY, uint16_t color);
   void drawBatteryIcon(int x, int y, int batteryLevel, bool charging, uint32_t nowMs);
   void drawWifiIcon(int x, int y, uint16_t color);
   void drawPageText(const std::string& text, int x, int y, int lineHeight);

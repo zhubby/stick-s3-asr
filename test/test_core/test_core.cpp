@@ -36,12 +36,31 @@ void test_short_press_is_ignored() {
                     static_cast<int>(input.update(false, false, AppMode::Idle, 200)));
 }
 
-void test_return_to_recording_only_in_result_mode() {
+void test_page_button_short_press_turns_result_page() {
   InputController input(450);
   TEST_ASSERT_EQUAL(static_cast<int>(InputEvent::None),
                     static_cast<int>(input.update(false, true, AppMode::Idle, 0)));
+  TEST_ASSERT_EQUAL(static_cast<int>(InputEvent::None),
+                    static_cast<int>(input.update(false, false, AppMode::Idle, 100)));
+
+  TEST_ASSERT_EQUAL(static_cast<int>(InputEvent::None),
+                    static_cast<int>(input.update(false, true, AppMode::Result, 200)));
+  TEST_ASSERT_EQUAL(static_cast<int>(InputEvent::NextPage),
+                    static_cast<int>(input.update(false, false, AppMode::Result, 350)));
+}
+
+void test_page_button_long_press_returns_to_recording_without_page_turn() {
+  InputController input(450);
+  TEST_ASSERT_EQUAL(static_cast<int>(InputEvent::None),
+                    static_cast<int>(input.update(false, true, AppMode::Result, 1000)));
+  TEST_ASSERT_EQUAL(static_cast<int>(InputEvent::None),
+                    static_cast<int>(input.update(false, true, AppMode::Result, 1400)));
   TEST_ASSERT_EQUAL(static_cast<int>(InputEvent::ReturnToRecording),
-                    static_cast<int>(input.update(false, true, AppMode::Result, 1)));
+                    static_cast<int>(input.update(false, true, AppMode::Result, 1450)));
+  TEST_ASSERT_EQUAL(static_cast<int>(InputEvent::None),
+                    static_cast<int>(input.update(false, true, AppMode::Idle, 1600)));
+  TEST_ASSERT_EQUAL(static_cast<int>(InputEvent::None),
+                    static_cast<int>(input.update(false, false, AppMode::Idle, 1700)));
 }
 
 void test_pairing_mode_ignores_record_and_page_buttons() {
@@ -465,7 +484,8 @@ int main(int argc, char** argv) {
   UNITY_BEGIN();
   RUN_TEST(test_long_press_starts_and_release_stops);
   RUN_TEST(test_short_press_is_ignored);
-  RUN_TEST(test_return_to_recording_only_in_result_mode);
+  RUN_TEST(test_page_button_short_press_turns_result_page);
+  RUN_TEST(test_page_button_long_press_returns_to_recording_without_page_turn);
   RUN_TEST(test_pairing_mode_ignores_record_and_page_buttons);
   RUN_TEST(test_reset_while_button_down_requires_release_before_restart);
   RUN_TEST(test_runtime_config_splits_wifi_and_asr_readiness);

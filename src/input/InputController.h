@@ -10,6 +10,7 @@ enum class InputEvent {
   None,
   StartRecording,
   StopRecording,
+  NextPage,
   ReturnToRecording,
 };
 
@@ -18,7 +19,7 @@ class InputController {
   explicit InputController(uint32_t holdThresholdMs = 450);
 
   InputEvent update(bool recordButtonDown,
-                    bool returnButtonPressed,
+                    bool pageButtonDown,
                     AppMode mode,
                     uint32_t nowMs);
   void resetRecordingGesture(bool recordButtonDown = false);
@@ -34,6 +35,10 @@ class InputController {
   bool holdCandidate_ = false;
   bool recordingActive_ = false;
   uint32_t pressedAtMs_ = 0;
+  bool pageButtonWasDown_ = false;
+  bool pageCandidate_ = false;
+  bool pageHoldFired_ = false;
+  uint32_t pagePressedAtMs_ = 0;
 };
 
 }  // namespace stick_s3_asr
