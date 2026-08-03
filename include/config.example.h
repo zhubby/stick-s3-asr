@@ -20,3 +20,8 @@
 
 // SoftAP password shown on the device during Wi-Fi pairing.
 #define PROVISION_AP_PASSWORD "stick1234"
+
+// Excalibur device management.
+// Set to 0 to build ASR-only firmware without starting the Excalibur SDK.
+#define EXCALIBUR_ENABLED 1
+#define APP_SOFTWARE_VERSION "0.1.0"

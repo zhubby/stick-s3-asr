@@ -11,6 +11,7 @@
 #include "AppTypes.h"
 #include "asr/VolcAsrClient.h"
 #include "audio/MicRecorder.h"
+#include "excalibur/ExcaliburManager.h"
 #include "input/InputController.h"
 #include "ui/DisplayUi.h"
 #include "ui/OrientationController.h"
@@ -56,6 +57,7 @@ MicRecorder recorder;
 VolcAsrClient asrClient;
 WifiCredentialStore wifiCredentialStore;
 ProvisioningPortal provisioningPortal;
+ExcaliburManager excaliburManager;
 
 std::vector<uint8_t> txBuffer;
 uint32_t wifiAttemptStartedMs = 0;
@@ -76,6 +78,8 @@ bool lastLoggedRecoverableError = false;
 bool lastLoggedBtnA = false;
 bool lastLoggedBtnB = false;
 bool lastLoggedBtnPwr = false;
+uint32_t asrSuccessCount = 0;
+uint32_t asrFailureCount = 0;
 
 bool wifiConnected() {
   return WiFi.status() == WL_CONNECTED;
@@ -105,6 +109,8 @@ const char* modeName(AppMode value) {
 
 const char* wifiStatusName(wl_status_t value) {
   switch (value) {
+    case WL_NO_SHIELD:
+      return "NO_SHIELD";
     case WL_IDLE_STATUS:
       return "IDLE";
     case WL_NO_SSID_AVAIL:
@@ -290,6 +296,13 @@ void clearDeferredRecordingError() {
 void showRecognitionResult(const std::string& text,
                            const char* reason = nullptr) {
   const std::string displayText = text.empty() ? kNoSpeechText : text;
+  const bool failedRecognition =
+      text.empty() && reason != nullptr && reason[0] != '\0';
+  if (failedRecognition) {
+    ++asrFailureCount;
+  } else {
+    ++asrSuccessCount;
+  }
   const uint32_t responseCount =
       asrClient.responseCount() > 0 ? asrClient.responseCount() : sessionAsrResponseCount;
   const bool connected = asrClient.connectedOnce() || sessionAsrConnected;
@@ -677,6 +690,27 @@ UiState buildUiState(uint32_t nowMs) {
   return state;
 }
 
+ExcaliburRuntimeSnapshot buildExcaliburSnapshot(uint32_t nowMs) {
+  ExcaliburRuntimeSnapshot snapshot;
+  snapshot.mode = mode;
+  snapshot.wifiConnected = wifiConnected();
+  snapshot.wifiConfigured = wifiConfigured;
+  snapshot.asrReady = asrReady;
+  snapshot.recordingActive = recorder.active() || mode == AppMode::Recording;
+  snapshot.recordingMs = recorder.recordedMs(nowMs);
+  snapshot.wifiRssi = wifiConnected() ? WiFi.RSSI() : 0;
+  snapshot.batteryCharging =
+      M5.Power.isCharging() == m5::Power_Class::is_charging;
+  snapshot.batteryLevel = M5.Power.getBatteryLevel();
+  snapshot.freeHeap = ESP.getFreeHeap();
+  snapshot.freePsram = ESP.getFreePsram();
+  snapshot.uptimeMs = nowMs;
+  snapshot.asrSuccessCount = asrSuccessCount;
+  snapshot.asrFailureCount = asrFailureCount;
+  snapshot.softwareVersion = runtimeConfig.softwareVersion;
+  return snapshot;
+}
+
 void handleInput(uint32_t nowMs) {
   const InputEvent event = inputController.update(M5.BtnA.isPressed(),
                                                   M5.BtnB.isPressed(),
@@ -720,13 +754,15 @@ void setup() {
   applyPageLayout();
   runtimeConfig = loadRuntimeConfig();
   asrReady = hasAsrSecrets(runtimeConfig);
+  excaliburManager.begin(runtimeConfig);
   WiFi.persistent(false);
   WiFi.setAutoReconnect(true);
   wifiCredentialStore.begin();
   applyWifiCredentials(wifiCredentialStore.load(runtimeConfig));
-  Serial.printf("[boot] wifiConfigured=%d asrReady=%d\n",
+  Serial.printf("[boot] wifiConfigured=%d asrReady=%d excaliburEnabled=%d\n",
                 wifiConfigured ? 1 : 0,
-                asrReady ? 1 : 0);
+                asrReady ? 1 : 0,
+                excaliburManager.enabled() ? 1 : 0);
   Serial.printf("[boot] psram total=%lu free=%lu heap=%lu\n",
                 static_cast<unsigned long>(ESP.getPsramSize()),
                 static_cast<unsigned long>(ESP.getFreePsram()),
@@ -767,8 +803,16 @@ void loop() {
   handleInput(nowMs);
   nowMs = millis();
   updateSpeechFlow(nowMs);
+  excaliburManager.loop(nowMs, wifiConnected(), buildExcaliburSnapshot(nowMs));
   displayUi.render(buildUiState(nowMs), nowMs);
   logRuntimeState(nowMs);
+
+  if (excaliburManager.rebootDue(nowMs)) {
+    Serial.println("[excalibur] reboot command accepted");
+    excaliburManager.clearRebootRequest();
+    delay(100);
+    ESP.restart();
+  }
 
   delay(appLoopDelayMs(mode, lowLatencyAudioActive(), provisioningPortal.active()));
 }

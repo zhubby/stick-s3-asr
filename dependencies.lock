@@ -1,0 +1,16 @@
+dependencies:
+  excalibur-esp-idf-sdk:
+    component_hash: 0fb69f4cbb2f163f7e509400b0edd7ec3403b5f3fb44f785fc917334904ffcb1
+    source:
+      git: git@github.com:zhubby/excalibur.git
+      path: sdk/excalibur-esp-idf-sdk
+      type: git
+    version: 8a20e0679641ce37ba762a91313aaa587cce98d1
+  idf:
+    component_hash: null
+    source:
+      type: idf
+    version: 4.4.7
+manifest_hash: bfdd67d438913baff3eef7dd33d6e6919de66307ebc7d91844389c4788c33475
+target: esp32s3
+version: 1.0.0

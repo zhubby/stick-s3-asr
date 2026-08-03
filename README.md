@@ -21,6 +21,8 @@ pio run -e m5stack-sticks3
 pio run -e m5stack-sticks3 -t upload
 ```
 
+The Excalibur ESP-IDF SDK is resolved by ESP-IDF Component Manager from `src/idf_component.yml`. `dependencies.lock` pins the resolved SDK commit for repeatable builds. When updating the SDK, commit and push the Excalibur repo first, then rebuild this firmware to refresh the lock file.
+
 ## Wi-Fi Pairing
 
 When no Wi-Fi is saved, or when the saved Wi-Fi cannot connect, StickS3 opens a pairing hotspot:
@@ -30,6 +32,28 @@ When no Wi-Fi is saved, or when the saved Wi-Fi cannot connect, StickS3 opens a 
 - Portal: `http://192.168.4.1`
 
 Connect your phone to that hotspot, open the portal, enter the target Wi-Fi name and password, then submit. The device saves the credentials to ESP32 NVS and reconnects automatically. The saved Wi-Fi survives resets and firmware uploads unless NVS is erased.
+
+## Excalibur Device Management
+
+This firmware can connect to the Excalibur native MQTT device protocol after Wi-Fi is online. It publishes device shadow, `device_agent_system_stats`, and `battery` telemetry, and registers `stick.status` and `stick.reboot` commands. ASR transcripts are not sent to Excalibur telemetry or shadow.
+
+The SDK dependency is pulled from `git@github.com:zhubby/excalibur.git`, path `sdk/excalibur-esp-idf-sdk`, using the commit resolved in `dependencies.lock`.
+
+Development provisioning uses the Excalibur Console dev-auth JSON:
+
+1. Create or select a device in Excalibur Console.
+2. Download the device dev-auth JSON.
+3. Save it locally as `data/device_config.json`. This file is ignored by git because it contains device private key material.
+4. Build and upload the SPIFFS image:
+
+```bash
+pio run -e m5stack-sticks3 -t buildfs
+pio run -e m5stack-sticks3 -t uploadfs
+```
+
+The SDK reads `/spiffs/device_config.json`. Wi-Fi pairing remains separate and still uses the StickS3 AP portal.
+
+Excalibur OTA is intentionally not enabled in this v1 integration. Enable it only after adding firmware hash enforcement and rollout validation.
 
 ## Tests
 

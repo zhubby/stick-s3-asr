@@ -3,4 +3,7 @@
 .DS_Store
 include/config.local.h
 compile_commands.json
-
+data/device_config.json
+managed_components/
+sdkconfig.*
+!sdkconfig.defaults

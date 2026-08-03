@@ -38,6 +38,14 @@
 #define PROVISION_AP_PASSWORD "stick1234"
 #endif
 
+#ifndef APP_SOFTWARE_VERSION
+#define APP_SOFTWARE_VERSION "0.1.0"
+#endif
+
+#ifndef EXCALIBUR_ENABLED
+#define EXCALIBUR_ENABLED 1
+#endif
+
 namespace stick_s3_asr {
 
 struct RuntimeConfig {
@@ -49,19 +57,23 @@ struct RuntimeConfig {
   std::string volcResourceId;
   std::string volcEndpoint;
   std::string provisionApPassword;
+  bool excaliburEnabled = EXCALIBUR_ENABLED != 0;
+  std::string softwareVersion;
 };
 
 inline RuntimeConfig loadRuntimeConfig() {
-  return {
-      WIFI_SSID,
-      WIFI_PASSWORD,
-      VOLC_API_KEY,
-      VOLC_APP_KEY,
-      VOLC_ACCESS_KEY,
-      VOLC_RESOURCE_ID,
-      VOLC_ASR_ENDPOINT,
-      PROVISION_AP_PASSWORD,
-  };
+  RuntimeConfig config;
+  config.wifiSsid = WIFI_SSID;
+  config.wifiPassword = WIFI_PASSWORD;
+  config.volcApiKey = VOLC_API_KEY;
+  config.volcAppKey = VOLC_APP_KEY;
+  config.volcAccessKey = VOLC_ACCESS_KEY;
+  config.volcResourceId = VOLC_RESOURCE_ID;
+  config.volcEndpoint = VOLC_ASR_ENDPOINT;
+  config.provisionApPassword = PROVISION_AP_PASSWORD;
+  config.excaliburEnabled = EXCALIBUR_ENABLED != 0;
+  config.softwareVersion = APP_SOFTWARE_VERSION;
+  return config;
 }
 
 inline bool hasWifiCredentials(const RuntimeConfig& config) {
@@ -81,6 +93,10 @@ inline bool hasAsrSecrets(const RuntimeConfig& config) {
 
 inline bool hasRequiredSecrets(const RuntimeConfig& config) {
   return hasWifiCredentials(config) && hasAsrSecrets(config);
+}
+
+inline bool hasExcaliburManagement(const RuntimeConfig& config) {
+  return config.excaliburEnabled;
 }
 
 }  // namespace stick_s3_asr

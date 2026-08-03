@@ -8,6 +8,7 @@
 #include "AppRuntime.h"
 #include "asr/VolcAsrProtocol.h"
 #include "audio/AudioBuffer.h"
+#include "excalibur/ExcaliburManager.h"
 #include "input/InputController.h"
 #include "ui/OrientationController.h"
 #include "ui/PageModel.h"
@@ -115,6 +116,119 @@ void test_runtime_config_splits_wifi_and_asr_readiness() {
   config.wifiSsid = "lab";
   TEST_ASSERT_TRUE(hasWifiCredentials(config));
   TEST_ASSERT_TRUE(hasRequiredSecrets(config));
+  TEST_ASSERT_TRUE(hasExcaliburManagement(config));
+
+  config.excaliburEnabled = false;
+  TEST_ASSERT_FALSE(hasExcaliburManagement(config));
+}
+
+void test_excalibur_manager_honors_config_gate() {
+  RuntimeConfig config;
+  config.excaliburEnabled = false;
+
+  ExcaliburManager manager;
+  manager.begin(config);
+
+  TEST_ASSERT_FALSE(manager.enabled());
+}
+
+void test_excalibur_starts_after_wifi_and_registers_safe_commands() {
+  RuntimeConfig config;
+  config.excaliburEnabled = true;
+  ExcaliburTestHooks hooks;
+  ExcaliburManager manager;
+  manager.setTestHooks(&hooks);
+  manager.begin(config);
+
+  ExcaliburRuntimeSnapshot snapshot;
+  snapshot.wifiConnected = false;
+  manager.loop(1000, false, snapshot);
+
+  TEST_ASSERT_FALSE(manager.started());
+  TEST_ASSERT_EQUAL_INT(0, hooks.initCalls);
+
+  snapshot.wifiConnected = true;
+  manager.loop(2000, true, snapshot);
+
+  TEST_ASSERT_TRUE(manager.started());
+  TEST_ASSERT_EQUAL_INT(1, hooks.initCalls);
+  TEST_ASSERT_EQUAL_INT(1, hooks.startCalls);
+  TEST_ASSERT_EQUAL_UINT32(2, hooks.registeredActions.size());
+  TEST_ASSERT_EQUAL_STRING("stick.status", hooks.registeredActions[0].c_str());
+  TEST_ASSERT_EQUAL_STRING("stick.reboot", hooks.registeredActions[1].c_str());
+}
+
+void test_excalibur_start_failure_respects_retry_interval() {
+  RuntimeConfig config;
+  config.excaliburEnabled = true;
+  ExcaliburTestHooks hooks;
+  hooks.initSucceeds = false;
+  ExcaliburManager manager;
+  manager.setTestHooks(&hooks);
+  manager.begin(config);
+
+  ExcaliburRuntimeSnapshot snapshot;
+  snapshot.wifiConnected = true;
+  manager.loop(1000, true, snapshot);
+  manager.loop(2000, true, snapshot);
+
+  TEST_ASSERT_FALSE(manager.started());
+  TEST_ASSERT_TRUE(manager.startFailed());
+  TEST_ASSERT_EQUAL_INT(1, hooks.initCalls);
+
+  hooks.initSucceeds = true;
+  manager.loop(61000, true, snapshot);
+
+  TEST_ASSERT_TRUE(manager.started());
+  TEST_ASSERT_EQUAL_INT(2, hooks.initCalls);
+}
+
+void test_excalibur_loop_publishes_shadow_and_telemetry_contract() {
+  RuntimeConfig config;
+  config.excaliburEnabled = true;
+  ExcaliburTestHooks hooks;
+  ExcaliburManager manager;
+  manager.setTestHooks(&hooks);
+  manager.begin(config);
+
+  ExcaliburRuntimeSnapshot snapshot;
+  snapshot.mode = AppMode::Idle;
+  snapshot.wifiConnected = true;
+  snapshot.wifiConfigured = true;
+  snapshot.asrReady = true;
+  snapshot.softwareVersion = "9.8.7";
+
+  manager.loop(1000, true, snapshot);
+
+  TEST_ASSERT_EQUAL_UINT32(1, hooks.shadows.size());
+  TEST_ASSERT_NOT_EQUAL(std::string::npos,
+                        hooks.shadows[0].find("\"runtime\""));
+  TEST_ASSERT_NOT_EQUAL(std::string::npos,
+                        hooks.shadows[0].find("\"software_version\":\"9.8.7\""));
+  TEST_ASSERT_EQUAL_UINT32(2, hooks.telemetry.size());
+  TEST_ASSERT_EQUAL_STRING("device_agent_system_stats",
+                           hooks.telemetry[0].stream.c_str());
+  TEST_ASSERT_EQUAL_UINT64(0, hooks.telemetry[0].sequence);
+  TEST_ASSERT_EQUAL_STRING("battery", hooks.telemetry[1].stream.c_str());
+  TEST_ASSERT_EQUAL_UINT64(0, hooks.telemetry[1].sequence);
+}
+
+void test_excalibur_shadow_failure_does_not_retry_every_loop() {
+  RuntimeConfig config;
+  config.excaliburEnabled = true;
+  ExcaliburTestHooks hooks;
+  hooks.publishShadowSucceeds = false;
+  ExcaliburManager manager;
+  manager.setTestHooks(&hooks);
+  manager.begin(config);
+
+  ExcaliburRuntimeSnapshot snapshot;
+  snapshot.wifiConnected = true;
+  manager.loop(1000, true, snapshot);
+  manager.loop(1001, true, snapshot);
+
+  TEST_ASSERT_EQUAL_UINT32(0, hooks.shadows.size());
+  TEST_ASSERT_EQUAL_UINT32(2, hooks.telemetry.size());
 }
 
 void test_error_recovery_uses_explicit_policy() {
@@ -480,6 +594,225 @@ void test_page_model_empty_new_text_and_newlines() {
   TEST_ASSERT_EQUAL_STRING("新文本", pages.page().c_str());
 }
 
+void test_excalibur_shadow_json_has_status_without_transcript() {
+  ExcaliburRuntimeSnapshot snapshot;
+  snapshot.mode = AppMode::Recording;
+  snapshot.wifiConnected = true;
+  snapshot.wifiConfigured = true;
+  snapshot.asrReady = true;
+  snapshot.recordingActive = true;
+  snapshot.wifiRssi = -61;
+  snapshot.batteryLevel = 82;
+  snapshot.batteryCharging = true;
+  snapshot.freeHeap = 123456;
+  snapshot.freePsram = 654321;
+  snapshot.asrSuccessCount = 4;
+  snapshot.asrFailureCount = 1;
+  snapshot.softwareVersion = "1.2.3";
+
+  const std::string json = ExcaliburManager::buildShadowJson(snapshot);
+
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, json.find("\"health\":\"online\""));
+  TEST_ASSERT_NOT_EQUAL(std::string::npos,
+                        json.find("\"software_type\":\"stick-s3-asr\""));
+  TEST_ASSERT_NOT_EQUAL(std::string::npos,
+                        json.find("\"hardware_type\":\"M5StickS3\""));
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, json.find("\"mode\":\"Recording\""));
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, json.find("\"battery_level\":82"));
+  TEST_ASSERT_EQUAL(std::string::npos, json.find("transcript"));
+  TEST_ASSERT_EQUAL(std::string::npos, json.find("pageText"));
+}
+
+void test_excalibur_telemetry_json_uses_expected_stream_payloads() {
+  ExcaliburRuntimeSnapshot snapshot;
+  snapshot.mode = AppMode::Idle;
+  snapshot.wifiConnected = true;
+  snapshot.wifiConfigured = true;
+  snapshot.asrReady = true;
+  snapshot.uptimeMs = 1234;
+  snapshot.freeHeap = 45000;
+  snapshot.freePsram = 90000;
+  snapshot.wifiRssi = -48;
+  snapshot.batteryLevel = 77;
+  snapshot.batteryCharging = false;
+
+  const std::string system =
+      ExcaliburManager::buildSystemTelemetryJson(snapshot);
+  const std::string battery =
+      ExcaliburManager::buildBatteryTelemetryJson(snapshot);
+
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, system.find("\"uptime_ms\":1234"));
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, system.find("\"mode\":\"Idle\""));
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, system.find("\"heap_free\":45000"));
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, battery.find("\"level\":77"));
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, battery.find("\"charging\":false"));
+  TEST_ASSERT_EQUAL(std::string::npos, system.find("No speech"));
+  TEST_ASSERT_EQUAL(std::string::npos, battery.find("No speech"));
+}
+
+void test_excalibur_battery_json_preserves_unknown_level() {
+  ExcaliburRuntimeSnapshot snapshot;
+  snapshot.batteryLevel = -1;
+
+  const std::string shadow = ExcaliburManager::buildShadowJson(snapshot);
+  const std::string battery =
+      ExcaliburManager::buildBatteryTelemetryJson(snapshot);
+
+  TEST_ASSERT_NOT_EQUAL(std::string::npos,
+                        shadow.find("\"battery_level\":null"));
+  TEST_ASSERT_NOT_EQUAL(std::string::npos, battery.find("\"level\":null"));
+  TEST_ASSERT_EQUAL(std::string::npos, shadow.find("255"));
+  TEST_ASSERT_EQUAL(std::string::npos, battery.find("255"));
+}
+
+void test_excalibur_command_queue_is_fifo_and_bounded() {
+  RuntimeConfig config;
+  config.excaliburEnabled = true;
+  ExcaliburTestHooks hooks;
+  ExcaliburManager manager;
+  manager.setTestHooks(&hooks);
+  manager.begin(config);
+
+  TEST_ASSERT_EQUAL_INT(0, manager.handleTestCommand(
+      ExcaliburCommandType::PublishStatus,
+      "018f4c5c-9b4d-7cc2-a62a-44590f671101"));
+  TEST_ASSERT_EQUAL_INT(0, manager.handleTestCommand(
+      ExcaliburCommandType::Reboot,
+      "018f4c5c-9b4d-7cc2-a62a-44590f671102"));
+  TEST_ASSERT_EQUAL_INT(0, manager.handleTestCommand(
+      ExcaliburCommandType::PublishStatus,
+      "018f4c5c-9b4d-7cc2-a62a-44590f671103"));
+  TEST_ASSERT_EQUAL_INT(0, manager.handleTestCommand(
+      ExcaliburCommandType::Reboot,
+      "018f4c5c-9b4d-7cc2-a62a-44590f671104"));
+  TEST_ASSERT_EQUAL_INT(-1, manager.handleTestCommand(
+      ExcaliburCommandType::PublishStatus,
+      "018f4c5c-9b4d-7cc2-a62a-44590f671105"));
+  TEST_ASSERT_EQUAL_UINT32(4, manager.queuedCommandCount());
+
+  ExcaliburCommand command;
+  TEST_ASSERT_TRUE(manager.takeQueuedCommandForTest(command));
+  TEST_ASSERT_EQUAL(static_cast<int>(ExcaliburCommandType::PublishStatus),
+                    static_cast<int>(command.type));
+  TEST_ASSERT_EQUAL_STRING("018f4c5c-9b4d-7cc2-a62a-44590f671101",
+                           command.actionId);
+
+  TEST_ASSERT_TRUE(manager.takeQueuedCommandForTest(command));
+  TEST_ASSERT_EQUAL(static_cast<int>(ExcaliburCommandType::Reboot),
+                    static_cast<int>(command.type));
+  TEST_ASSERT_EQUAL_STRING("018f4c5c-9b4d-7cc2-a62a-44590f671102",
+                           command.actionId);
+}
+
+void test_excalibur_command_queue_rejects_invalid_action_ids() {
+  RuntimeConfig config;
+  config.excaliburEnabled = true;
+  ExcaliburTestHooks hooks;
+  ExcaliburManager manager;
+  manager.setTestHooks(&hooks);
+  manager.begin(config);
+
+  TEST_ASSERT_EQUAL_INT(-1, manager.handleTestCommand(
+                                  ExcaliburCommandType::None,
+                                  "018f4c5c-9b4d-7cc2-a62a-44590f671101"));
+  TEST_ASSERT_EQUAL_INT(-1, manager.handleTestCommand(
+                                  ExcaliburCommandType::PublishStatus, ""));
+  TEST_ASSERT_EQUAL_INT(-1, manager.handleTestCommand(
+                                  ExcaliburCommandType::PublishStatus,
+                                  "018f4c5c-9b4d-7cc2-a62a-44590f671101x"));
+  TEST_ASSERT_EQUAL_UINT32(0, manager.queuedCommandCount());
+}
+
+void test_excalibur_command_names_match_public_contract() {
+  TEST_ASSERT_EQUAL_STRING(
+      "stick.status",
+      ExcaliburManager::commandName(ExcaliburCommandType::PublishStatus));
+  TEST_ASSERT_EQUAL_STRING(
+      "stick.reboot",
+      ExcaliburManager::commandName(ExcaliburCommandType::Reboot));
+}
+
+void test_excalibur_status_command_completes_only_after_telemetry_publish() {
+  RuntimeConfig config;
+  config.excaliburEnabled = true;
+  ExcaliburTestHooks hooks;
+  ExcaliburManager manager;
+  manager.setTestHooks(&hooks);
+  manager.begin(config);
+
+  ExcaliburRuntimeSnapshot snapshot;
+  snapshot.wifiConnected = true;
+  manager.loop(1000, true, snapshot);
+  hooks.telemetry.clear();
+  hooks.actionStatuses.clear();
+
+  TEST_ASSERT_EQUAL_INT(
+      0, manager.handleTestCommand(
+             ExcaliburCommandType::PublishStatus,
+             "018f4c5c-9b4d-7cc2-a62a-44590f671101"));
+  manager.loop(2000, true, snapshot);
+
+  TEST_ASSERT_EQUAL_UINT32(1, hooks.telemetry.size());
+  TEST_ASSERT_EQUAL_STRING("device_agent_system_stats",
+                           hooks.telemetry[0].stream.c_str());
+  TEST_ASSERT_EQUAL_UINT32(2, hooks.actionStatuses.size());
+  TEST_ASSERT_EQUAL_STRING("Running", hooks.actionStatuses[0].state.c_str());
+  TEST_ASSERT_EQUAL_STRING("Completed", hooks.actionStatuses[1].state.c_str());
+
+  hooks.telemetry.clear();
+  hooks.actionStatuses.clear();
+  hooks.publishTelemetrySucceeds = false;
+  TEST_ASSERT_EQUAL_INT(
+      0, manager.handleTestCommand(
+             ExcaliburCommandType::PublishStatus,
+             "018f4c5c-9b4d-7cc2-a62a-44590f671102"));
+  manager.loop(3000, true, snapshot);
+
+  TEST_ASSERT_EQUAL_UINT32(0, hooks.telemetry.size());
+  TEST_ASSERT_EQUAL_UINT32(2, hooks.actionStatuses.size());
+  TEST_ASSERT_EQUAL_STRING("Running", hooks.actionStatuses[0].state.c_str());
+  TEST_ASSERT_EQUAL_STRING("Failed", hooks.actionStatuses[1].state.c_str());
+}
+
+void test_excalibur_reboot_command_requires_status_publish_success() {
+  RuntimeConfig config;
+  config.excaliburEnabled = true;
+  ExcaliburTestHooks hooks;
+  ExcaliburManager manager;
+  manager.setTestHooks(&hooks);
+  manager.begin(config);
+
+  ExcaliburRuntimeSnapshot snapshot;
+  snapshot.wifiConnected = true;
+  manager.loop(1000, true, snapshot);
+  hooks.actionStatuses.clear();
+
+  hooks.publishActionStatusSucceeds = false;
+  TEST_ASSERT_EQUAL_INT(
+      0, manager.handleTestCommand(
+             ExcaliburCommandType::Reboot,
+             "018f4c5c-9b4d-7cc2-a62a-44590f671103"));
+  manager.loop(2000, true, snapshot);
+
+  TEST_ASSERT_FALSE(manager.rebootDue(3000));
+  TEST_ASSERT_EQUAL_UINT32(2, hooks.actionStatuses.size());
+  TEST_ASSERT_EQUAL_STRING("Running", hooks.actionStatuses[0].state.c_str());
+  TEST_ASSERT_EQUAL_STRING("Failed", hooks.actionStatuses[1].state.c_str());
+
+  hooks.actionStatuses.clear();
+  hooks.publishActionStatusSucceeds = true;
+  TEST_ASSERT_EQUAL_INT(
+      0, manager.handleTestCommand(
+             ExcaliburCommandType::Reboot,
+             "018f4c5c-9b4d-7cc2-a62a-44590f671104"));
+  manager.loop(3000, true, snapshot);
+
+  TEST_ASSERT_FALSE(manager.rebootDue(3600));
+  TEST_ASSERT_TRUE(manager.rebootDue(3750));
+  TEST_ASSERT_EQUAL_UINT32(2, hooks.actionStatuses.size());
+  TEST_ASSERT_EQUAL_STRING("Completed", hooks.actionStatuses[1].state.c_str());
+}
+
 int main(int argc, char** argv) {
   UNITY_BEGIN();
   RUN_TEST(test_long_press_starts_and_release_stops);
@@ -503,6 +836,11 @@ int main(int argc, char** argv) {
   RUN_TEST(test_volc_connect_headers_use_access_key_when_app_field_is_api_key_id);
   RUN_TEST(test_volc_connect_headers_use_api_key_app_field_when_it_is_the_only_key);
   RUN_TEST(test_volc_connect_headers_keep_legacy_app_access_keys);
+  RUN_TEST(test_excalibur_manager_honors_config_gate);
+  RUN_TEST(test_excalibur_starts_after_wifi_and_registers_safe_commands);
+  RUN_TEST(test_excalibur_start_failure_respects_retry_interval);
+  RUN_TEST(test_excalibur_loop_publishes_shadow_and_telemetry_contract);
+  RUN_TEST(test_excalibur_shadow_failure_does_not_retry_every_loop);
   RUN_TEST(test_volc_response_parses_text);
   RUN_TEST(test_volc_response_ignores_empty_text_and_keeps_searching);
   RUN_TEST(test_volc_response_empty_text_does_not_expose_raw_json_as_result);
@@ -511,5 +849,13 @@ int main(int argc, char** argv) {
   RUN_TEST(test_volc_error_response_parses_code_and_message);
   RUN_TEST(test_volc_truncated_payload_is_rejected_safely);
   RUN_TEST(test_page_model_empty_new_text_and_newlines);
+  RUN_TEST(test_excalibur_shadow_json_has_status_without_transcript);
+  RUN_TEST(test_excalibur_telemetry_json_uses_expected_stream_payloads);
+  RUN_TEST(test_excalibur_battery_json_preserves_unknown_level);
+  RUN_TEST(test_excalibur_command_queue_is_fifo_and_bounded);
+  RUN_TEST(test_excalibur_command_queue_rejects_invalid_action_ids);
+  RUN_TEST(test_excalibur_command_names_match_public_contract);
+  RUN_TEST(test_excalibur_status_command_completes_only_after_telemetry_publish);
+  RUN_TEST(test_excalibur_reboot_command_requires_status_publish_success);
   return UNITY_END();
 }
